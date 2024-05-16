@@ -1,10 +1,10 @@
 module CompetingRisks
 
-# import from Distributions
-import Distributions: Uniform
+# import from packages
+include("imports.jl")
 
 # export structs
-export CompetingRisksDataset, RestaurantFranchise, RestaurantArray
+export CompetingRisksDataset, CoxModel, RestaurantFranchise, RestaurantArray
 
 """
     struct CompetingRisksDataset
@@ -192,7 +192,6 @@ mutable struct RestaurantFranchise
 
         # base measure
         base_measure = Uniform(0.0, maximum(crd.T))
-        # base_measure = Uniform(0.0, 2.0)
 
         # integration utility
         legendre = LegendreIntegral()       # quadrature nodes and weights
@@ -284,7 +283,6 @@ mutable struct RestaurantArray
 
         # base measure
         base_measure = Uniform(0.0, maximum(crd.T))
-        # base_measure = Uniform(0.0, 2.0)
 
         # integration utility
         legendre = LegendreIntegral()       # quadrature nodes and weights
@@ -296,6 +294,9 @@ mutable struct RestaurantArray
     end # RestaurantArray
 
 end # struct
+
+# create datasets
+include("create_datasets.jl")
 
 # random measures
 include("random_measures.jl")

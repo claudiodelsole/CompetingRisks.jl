@@ -1,6 +1,3 @@
-# import from Distributions
-import Distributions: Gamma, pdf
-
 """
     resample_dishes(rf::RestaurantFranchise)
 
@@ -385,12 +382,6 @@ function loglikelihood_alpha(alpha::Float64, rf::RestaurantArray)
     return loglik
 
 end # loglikelihood_alpha
-
-# """
-#     resample_eta(rf::Union{RestaurantFranchise,RestaurantArray})
-
-# """
-# resample_eta(_::Union{RestaurantFranchise,RestaurantArray}) = (0.0, false)
 
 """
     resample_eta(rf::Union{RestaurantFranchise,RestaurantArray})

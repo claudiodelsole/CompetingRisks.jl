@@ -1,10 +1,8 @@
-# import from Statistics, StatsBase, Plots
-import Statistics: mean
-import StatsBase: autocor
-import Plots: plot, plot!, hline!, histogram!
+# export struct
+export Diagnostics
 
-# export struct and functions
-export Diagnostics, summary_dishes, summary_theta, summary_alpha, summary_coefficients, summary_loglikelihood, traceplots
+# export functions
+export summary_dishes, summary_theta, summary_alpha, summary_eta, summary_coefficients, summary_loglikelihood, traceplots
 
 """
     struct Diagnostics
@@ -154,7 +152,7 @@ function summary_dishes(dgn::Diagnostics, burn_in::Int64)
     histogram!(plhist, trace_post, normalize = :probability)
 
     # combine plots
-    pl = plot(pltrace, plhist, layout = (1,2), size = (720,480))
+    pl = plot(pltrace, plhist, layout = (1,2))
     return pl
 
 end # summary_dishes
@@ -185,7 +183,7 @@ function summary_theta(dgn::Diagnostics, burn_in::Int64)
     histogram!(plhist, trace_post, normalize = :pdf)
 
     # combine plots
-    pl = plot(pltrace, plhist, layout = (1,2), size = (720,480))
+    pl = plot(pltrace, plhist, layout = (1,2))
     return pl
 
 end # summary_theta
@@ -220,7 +218,7 @@ function summary_alpha(dgn::Diagnostics, burn_in::Int64)
     histogram!(plhist, trace_post, normalize = :pdf)
 
     # combine plots
-    pl = plot(pltrace, plhist, layout = (1,2), size = (720,480))
+    pl = plot(pltrace, plhist, layout = (1,2))
     return pl
 
 end # summary_alpha
@@ -255,7 +253,7 @@ function summary_eta(dgn::Diagnostics, burn_in::Int64)
     histogram!(plhist, trace_post, normalize = :pdf)
 
     # combine plots
-    pl = plot(pltrace, plhist, layout = (1,2), size = (720,480))
+    pl = plot(pltrace, plhist, layout = (1,2))
     return pl
 
 end # summary_eta
@@ -291,7 +289,7 @@ function summary_coefficients(dgn::Diagnostics, burn_in::Int64; l::Int64 = 1)
     histogram!(plhist, trace_post, normalize = :pdf)
 
     # combine plots
-    pl = plot(pltrace, plhist, layout = (1,2), size = (720,480))
+    pl = plot(pltrace, plhist, layout = (1,2))
     return pl
 
 end # summary_coefficient
@@ -312,17 +310,9 @@ function summary_loglikelihood(dgn::Diagnostics, burn_in::Int64)
     plot!(pltrace, 1:burn_in, trace_start, linecolor = "gray")
     plot!(pltrace, burn_in+1:length(trace), trace_post, linecolor = 1)
 
-    # combine plots
-    pl = plot(pltrace, size = (720,480))
-    return pl
+    return pltrace
 
 end # summary_loglikelihood
-
-"""
-    ess(trace::Vector{Float64})
-
-"""
-ess(trace::Vector{Float64}) = length(trace) / (2 * sum(autocor(trace)) - 1)
 
 """
     traceplots(estimator::HazardMarginal, time::Float64; l::Int64 = 0)
@@ -350,14 +340,14 @@ function traceplots(estimator::HazardMarginal, time::Float64; l::Int64 = 0)
 
     # autocorrelation plot
     plcor = plot(title = "Autocorrelations")
-    plot!(plcor, autocor(trace), ylims = (-0.05, 1.0), linecolor = mycolors, label = mylabels)
+    plot!(plcor, autocor(trace), ylims = (-0.1, 1.0), linecolor = mycolors, label = mylabels)
     hline!(plcor, [0.0], linecolor = "black", linestyle = :dash, label = false)
 
     # print output
     println("ESS: ", string([ess(trace[:,d]) for d in 1:estimator.D]))
 
     # combine plots
-    pl = plot(pltrace, plcor, layout = (1,2), size = (720,480))
+    pl = plot(pltrace, plcor, layout = (1,2))
     return pl
 
 end # traceplots
@@ -384,23 +374,23 @@ function traceplots(estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
 
     # autocorrelation plot
     plcor = plot(title = "Autocorrelation", legend = false)
-    plot!(plcor, autocor(trace), ylims = (-0.05, 1.0), linecolor = 2)
+    plot!(plcor, autocor(trace), ylims = (-0.1, 1.0), linecolor = 2)
     hline!(plcor, [0.0], linecolor = "black", linestyle = :dash)
 
     # print output
     println("ESS: ", string(ess(trace)))
 
     # combine plots
-    pl = plot(pltrace, plcor, layout = (1,2), size = (720,480))
+    pl = plot(pltrace, plcor, layout = (1,2))
     return pl
 
 end # traceplots
 
 """
-    traceplots(hazard_estimator::HazardMarginal, survival_estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
+    traceplots(hazard_estimator::IncidenceMarginal, survival_estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
 
 """
-function traceplots(hazard_estimator::HazardMarginal, survival_estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
+function traceplots(hazard_estimator::IncidenceMarginal, survival_estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
 
     # labels and colors
     mycolors = reshape([d for d in 1:hazard_estimator.D], 1, :)
@@ -419,17 +409,61 @@ function traceplots(hazard_estimator::HazardMarginal, survival_estimator::Surviv
 
     # autocorrelation plot
     plcor = plot(title = "Autocorrelations")
-    plot!(plcor, autocor(trace), ylims = (-0.05, 1.0), linecolor = mycolors, label = mylabels)
+    plot!(plcor, autocor(trace), ylims = (-0.1, 1.0), linecolor = mycolors, label = mylabels)
     hline!(plcor, [0.0], linecolor = "black", linestyle = :dash, label = false)
 
     # print output
     println("ESS: ", string([ess(trace[:,d]) for d in 1:hazard_estimator.D]))
 
     # combine plots
-    pl = plot(pltrace, plcor, layout = (1,2), size = (720,480))
+    pl = plot(pltrace, plcor, layout = (1,2))
     return pl
 
 end # traceplots
+
+"""
+    traceplots(estimator::IncidenceMarginal, time::Float64; l::Int64 = 0)
+
+"""
+function traceplots(estimator::IncidenceMarginal, time::Float64; l::Int64 = 0)
+
+    # labels and colors
+    mycolors = reshape([d for d in 1:estimator.D], 1, :)
+    mylabels = reshape(["cause " * string(d) for d in 1:estimator.D], 1, :)
+
+    # reshape samples
+    post_samples = reshape(estimator.post_samples, length(estimator.times), estimator.L + 1, estimator.D, :)
+
+    # normalize
+    post_samples = mapslices(p -> p / sum(p), post_samples; dims = 3)
+
+    # retrieve trace
+    t = sum(time .>= estimator.times)
+    trace = transpose(post_samples[t,l+1,:,:])
+
+    # traceplot
+    pltrace = plot(title = "Traceplots")
+    plot!(pltrace, trace, linecolor = mycolors, label = mylabels)
+
+    # autocorrelation plot
+    plcor = plot(title = "Autocorrelations")
+    plot!(plcor, autocor(trace), ylims = (-0.1, 1.0), linecolor = mycolors, label = mylabels)
+    hline!(plcor, [0.0], linecolor = "black", linestyle = :dash, label = false)
+
+    # print output
+    println("ESS: ", string([ess(trace[:,d]) for d in 1:estimator.D]))
+
+    # combine plots
+    pl = plot(pltrace, plcor, layout = (1,2))
+    return pl
+
+end # traceplots
+
+"""
+    ess(trace::Vector{Float64})
+
+"""
+ess(trace::Vector{Float64}) = length(trace) / (2.0 * sum(autocor(trace)) - 1.0)
 
 """
     loglikelihood(rf::RestaurantFranchise)

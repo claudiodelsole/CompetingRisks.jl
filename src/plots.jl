@@ -1,8 +1,5 @@
-# import from Plots
-import Plots: Plot, plot, plot!, bar!
-
 # export functions
-export summary_data, hazard_plot, survival_plot, incidence_plot
+export summary_data, hazard_plot, survival_plot, incidence_plot, proportion_plot
 
 """
     summary_data(crd::CompetingRisksDataset)
@@ -27,7 +24,7 @@ function summary_data(crd::CompetingRisksDataset)
     end
 
     # combine plots
-    pl = plot(plhist, plcauses, layout = (1,2), size = (720,480))
+    pl = plot(plhist, plcauses, layout = (1,2))
     return pl
 
 end # summary_data
@@ -56,9 +53,9 @@ function hazard_plot(times::Vector{Float64}, hazard_post::Matrix{Float64};
     mylabels = reshape(["cause " * string(d) for d in diseases], 1, :)
 
     if cum == false     # hazard estimates
-        pl = plot(title = "Cause-specific hazard", legend = :topleft, size = (720,480))
+        pl = plot(title = "Cause-specific hazard", legend = :topleft)
     else    # cumulative hazard estimates
-        pl = plot(title = "Cause-specific cumulative hazard", legend = :topleft, size = (720,480))
+        pl = plot(title = "Cause-specific cumulative hazard", legend = :topleft)
     end
 
     # plot hazards posterior estimates
@@ -102,7 +99,7 @@ function survival_plot(times::Vector{Float64}, survival_post::Vector{Float64};
         lower::Union{Vector{Float64},Nothing} = nothing, upper::Union{Vector{Float64},Nothing} = nothing)
 
     # plot survival posterior estimate
-    pl = plot(title = "Survival function", size = (720,480), ylim = (0,1))
+    pl = plot(title = "Survival function", ylim = (0, 1.0))
     plot!(pl, times, survival_post, linecolor = 1, label = "posterior")
 
     # plot true survival
@@ -151,12 +148,11 @@ function incidence_plot(times::Vector{Float64}, incidence_post::Matrix{Float64};
     # labels and colors
     mycolors = reshape([d+1 for d in diseases], 1, :)
     mylabels = reshape(["cause " * string(d) for d in diseases], 1, :)
-    mylabels = ["melanoma" "other"]
 
     if cum == false     # incidence estimates
-        pl = plot(title = "Cause-specific incidence function", size = (720,480))
+        pl = plot(title = "Cause-specific incidence function")
     else    # cumulative incidence estimates
-        pl = plot(title = "Cause-specific cumulative incidence function", legend = :topleft, size = (720,480))
+        pl = plot(title = "Cause-specific cumulative incidence function", legend = :topleft)
     end
 
     # plot incidence posterior estimates
@@ -190,13 +186,13 @@ end # incidence_plot
 """
     proportion_plot(times::Vector{Float64}, proportion_post::Matrix{Float64};
             diseases::Union{Vector{Int64},Nothing} = nothing, 
-            proportion_true::Union{Matrix{Float64},Nothing} = nothing, proportion_prior::Union{Vector{Float64},Nothing} = nothing, 
+            proportion_true::Union{Matrix{Float64},Nothing} = nothing, 
             lower::Union{Matrix{Float64},Nothing} = nothing, upper::Union{Matrix{Float64},Nothing} = nothing)
 
 """
 function proportion_plot(times::Vector{Float64}, proportion_post::Matrix{Float64};
         diseases::Union{Vector{Int64},Nothing} = nothing, 
-        proportion_true::Union{Matrix{Float64},Nothing} = nothing, proportion_prior::Union{Vector{Float64},Nothing} = nothing, 
+        proportion_true::Union{Matrix{Float64},Nothing} = nothing, 
         lower::Union{Matrix{Float64},Nothing} = nothing, upper::Union{Matrix{Float64},Nothing} = nothing)
 
     # number of diseases
@@ -207,20 +203,14 @@ function proportion_plot(times::Vector{Float64}, proportion_post::Matrix{Float64
     # labels and colors
     mycolors = reshape([d+1 for d in diseases], 1, :)
     mylabels = reshape(["cause " * string(d) for d in diseases], 1, :)
-    mylabels = ["melanoma" "other"]
 
     # plot diseases proportions posterior estimates
-    pl = plot(title = "Diseases proportions function", size = (720,480), ylim = (0,1))
+    pl = plot(title = "Diseases proportions function", ylim = (0, 1.0))
     plot!(pl, times, proportion_post[:,diseases], linecolor = mycolors, label = mylabels)
 
     # plot true proportions
     if !isnothing(proportion_true)
         plot!(pl, times, proportion_true[:,diseases], linecolor = mycolors, linestyle = :dash, primary = false)
-    end
-
-    # plot incidence prior estimate
-    if !isnothing(proportion_prior)
-        plot!(pl, times, proportion_prior, linecolor = "gray", label = "prior")
     end
 
     # fill credible bands

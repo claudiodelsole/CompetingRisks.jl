@@ -1,6 +1,3 @@
-# import from Plots
-import Plots: plot, plot!
-
 # export functions
 export survival_error, incidence_error, survival_errorplot, incidence_errorplot
 
@@ -81,7 +78,7 @@ function survival_errorplot(times::Vector{Float64}, survival_post::Vector{Float6
         lower::Union{Vector{Float64},Nothing} = nothing, upper::Union{Vector{Float64},Nothing} = nothing)
 
     # initialize plot
-    pl = plot(title = "Survival function errors", size = (720,480))
+    pl = plot(title = "Survival function errors")
 
     # plot survival posterior estimate error
     error_post = survival_post - survival_true
@@ -156,7 +153,7 @@ function incidence_errorplot(times::Vector{Float64}, incidence_post::Matrix{Floa
     mylabels = reshape(["cause " * string(d) for d in diseases], 1, :)
 
     # initialize plot
-    pl = plot(title = "Incidence functions errors", size = (720,480))
+    pl = plot(title = "Incidence functions errors")
 
     # plot incidence posterior estimates error
     error_post = (incidence_post - incidence_true) ./ transpose(props)
@@ -205,7 +202,7 @@ function incidence_errorplot(times::Vector{Float64}, cumincidence_post::Matrix{F
     mylabels = reshape(["cause " * string(d) for d in diseases], 1, :)
 
     # initialize plot
-    pl = plot(title = "Cumulative incidence functions errors", size = (720,480))
+    pl = plot(title = "Cumulative incidence functions errors")
 
     # plot cumincidence posterior estimates error
     error_post = (cumincidence_post - cumincidence_true) ./ transpose(props)

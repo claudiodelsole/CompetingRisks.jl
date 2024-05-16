@@ -1,5 +1,5 @@
-# imports
-import Distributions: UnivariateDistribution, DiscreteUniform
+# export functions
+export independent_dataset, summary_models
 
 """
     independent_dataset(N::Int64, models::Vector{Type}; 
@@ -116,7 +116,7 @@ function summary_models(models::Vector{Type}) where Type <: UnivariateDistributi
     plot!(plincidence, times, incidence_true, linecolor = mycolors, label = mylabels)
 
     # combine plots
-    pl = plot(plhazard, plincidence, layout = (1,2), size = (720,480))
+    pl = plot(plhazard, plincidence, layout = (1,2))
     return pl
 
 end # summary_models

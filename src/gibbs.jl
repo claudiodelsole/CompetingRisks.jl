@@ -1,7 +1,3 @@
-# import from Distributions
-import Distributions: pdf
-import ProgressMeter: @showprogress
-
 # export functions
 export Gibbs
 
@@ -14,7 +10,7 @@ export Gibbs
 function Gibbs(rf::Union{RestaurantFranchise,RestaurantArray}, marginal_estimators::Vector{TypeM}, conditional_estimators::Vector{TypeC}, 
         num_samples::@NamedTuple{n::Int64, m::Int64}; 
         thin::Int64 = 10, burn_in::Int64 = 0, started::Bool = false) where {TypeM <: MarginalEstimator, TypeC <: ConditionalEstimator}
-    
+
     # create Diagnostics
     dgn = Diagnostics()
 
@@ -49,7 +45,7 @@ function Gibbs(rf::Union{RestaurantFranchise,RestaurantArray}, marginal_estimato
 
             # inference
             for est in conditional_estimators
-                append(est, CRMs, rf.alpha, rf.eta)
+                append(est, CRMs, rf)
             end
 
         end
@@ -80,6 +76,8 @@ function Gibbs_initialize(rf::Union{RestaurantFranchise,RestaurantArray})
     # resampling
     resample_dishes(rf)
     resample_theta(rf)
+
+    # resampling hyperparameters
     resample_alpha(rf)
     resample_eta(rf)
 
@@ -101,11 +99,13 @@ function Gibbs_step(rf::Union{RestaurantFranchise,RestaurantArray}, dgn::Diagnos
     # resampling
     accept_dishes = resample_dishes(rf)
     resample_theta(rf)
+
+    # resampling hyperparameters
     (accept_alpha, flag_alpha) = resample_alpha(rf)
     (accept_eta, flag_eta) = resample_eta(rf)
 
     # precompute quantities
-    if flag_alpha || flag_eta precompute_mass_base(rf) end
+    if (flag_alpha || flag_eta) precompute_mass_base(rf) end
 
     # diagnostics
     append(dgn, rf, accept_dishes, accept_alpha, accept_eta)
@@ -791,7 +791,7 @@ function Gibbs(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel, mar
 
             # inference
             for est in conditional_estimators
-                append(est, CRMs, rf.alpha, rf.eta, pushfirst!(exp.(cm.xi), 1.0))
+                append(est, CRMs, rf, pushfirst!(exp.(cm.xi), 1.0))
             end
 
         end
@@ -822,8 +822,12 @@ function Gibbs_initialize(rf::Union{RestaurantFranchise,RestaurantArray}, cm::Co
     # resampling
     resample_dishes(rf)
     resample_theta(rf)
+
+    # resampling hyperparameters
     resample_alpha(rf)
     resample_eta(rf)
+
+    # resampling cefficients
     resample_coefficients(rf, cm)
 
 end # Gibbs_initialize
@@ -844,12 +848,16 @@ function Gibbs_step(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel
     # resampling
     accept_dishes = resample_dishes(rf)
     resample_theta(rf)
+
+    # resampling hyperparameters
     (accept_alpha, flag_alpha) = resample_alpha(rf)
     (accept_eta, flag_eta) = resample_eta(rf)
+
+    # resampling cefficients
     (accept_coeffs, flag_coeffs) = resample_coefficients(rf, cm)
 
     # precompute quantities
-    if (flag_alpha || flag_eta ||flag_coeffs) precompute_mass_base(rf) end
+    if (flag_alpha || flag_eta || flag_coeffs) precompute_mass_base(rf) end
 
     # diagnostics
     append(dgn, rf, cm, accept_dishes, accept_alpha, accept_eta, accept_coeffs)

@@ -1,6 +1,3 @@
-# import from Distributions
-import Distributions: Normal, quantile
-
 # export functions
 export kaplan_meier, nelson_aalen, aalen_johansen
 

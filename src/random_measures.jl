@@ -1,9 +1,3 @@
-# import from Distributions
-import Distributions: Exponential, Categorical
-
-# export struct
-export HierarchicalCRM
-
 """
     struct HierarchicalCRM
 
@@ -70,7 +64,7 @@ function sample_measures(rf::RestaurantArray)
     # sample measures
     locations, jumps, jump_disease = sample_independent_measures(rf)
 
-    # create HierarchicalCRM
+    # create CRMArray
     return CRMArray(rf.D, length(locations), locations, jumps, jump_disease)
 
 end # sample_measures
@@ -103,6 +97,9 @@ function sample_base_measure(rf::RestaurantFranchise)
     # initialize total mass
     sumjumps = sum(jumps_base)
 
+    # initialize logjump
+    logjump = -1.0
+
     # initialize standard Poisson process
     spp = 0.0
 
@@ -121,15 +118,18 @@ function sample_base_measure(rf::RestaurantFranchise)
             KInt = rf.alpha * KernelInt(atom, rf.T, rf.CoxProd, rf.eta)
         end
 
-        # algorithm starting point
-        start = -8.0
-
         # define functions
-        f = logh::Float64 -> jumps_measure(logh, rf.beta0, rf.sigma0; posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
-        fp = logh::Float64 -> jumps_measure_grad(logh, rf.beta0, rf.sigma0; posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+        f(logh::Float64) = jumps_measure(logh, rf.beta0, rf.sigma0; posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+        fp(logh::Float64) = jumps_measure_grad(logh, rf.beta0, rf.sigma0; posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+
+        # algorithm starting point
+        if logjump >= 0.0 logjump = -1.0 end
+        while rf.theta * f(logjump) <= spp
+            logjump *= 2.0
+        end
 
         # solve equation
-        logjump = newton(spp / rf.theta, f, fp, start)
+        logjump = newton(spp / rf.theta, f, fp, logjump)
         jump = exp(logjump)
 
         # append atom and jump
@@ -183,6 +183,9 @@ function sample_dependent_measures(rf::RestaurantFranchise, locations::Vector{Fl
         # initialize total mass
         sumjumps = sum(jumps[:,d])
 
+        # initialize logjump
+        logjump = -1.0
+
         # initialize standard Poisson process
         spp = 0.0
 
@@ -201,15 +204,18 @@ function sample_dependent_measures(rf::RestaurantFranchise, locations::Vector{Fl
                 KInt = rf.alpha * KernelInt(locations[atom], rf.T, rf.CoxProd, rf.eta)
             end
 
-            # algorithm starting point
-            start = -8.0
-
             # define functions
-            f = logh::Float64 -> jumps_measure(logh, rf.beta, rf.sigma; posterior = KInt)
-            fp = logh::Float64 -> jumps_measure_grad(logh, rf.beta, rf.sigma; posterior = KInt)
+            f(logh::Float64) = jumps_measure(logh, rf.beta, rf.sigma; posterior = KInt)
+            fp(logh::Float64) = jumps_measure_grad(logh, rf.beta, rf.sigma; posterior = KInt)
+
+            # algorithm starting point
+            if logjump >= 0.0 logjump = -1.0 end
+            while rf.theta * f(logjump) <= spp
+                logjump *= 2.0
+            end
 
             # solve equation
-            logjump = newton(spp / mass_base, f, fp, start)
+            logjump = newton(spp / mass_base, f, fp, logjump)
             jump = exp(logjump)
 
             # update jump at atom
@@ -258,6 +264,9 @@ function sample_independent_measures(rf::RestaurantArray)
         # initialize total mass
         sumjumps = sum(jumps)
 
+        # initialize logjump
+        logjump = -1.0
+
         # initialize standard Poisson process
         spp = 0.0
 
@@ -276,15 +285,18 @@ function sample_independent_measures(rf::RestaurantArray)
                 KInt = rf.alpha * KernelInt(atom, rf.T, rf.CoxProd, rf.eta)
             end
 
-            # algorithm starting point
-            start = -8.0
-
             # define functions
-            f = logh::Float64 -> jumps_measure(logh, rf.beta, rf.sigma; posterior = KInt)
-            fp = logh::Float64 -> jumps_measure_grad(logh, rf.beta, rf.sigma; posterior = KInt)
+            f(logh::Float64) = jumps_measure(logh, rf.beta, rf.sigma; posterior = KInt)
+            fp(logh::Float64) = jumps_measure_grad(logh, rf.beta, rf.sigma; posterior = KInt)
+
+            # algorithm starting point
+            if logjump >= 0.0 logjump = -1.0 end
+            while rf.theta * f(logjump) <= spp
+                logjump *= 2.0
+            end
 
             # solve equation
-            logjump = newton(spp / rf.theta, f, fp, start)
+            logjump = newton(spp / rf.theta, f, fp, logjump)
             jump = exp(logjump)
 
             # append atom and jump

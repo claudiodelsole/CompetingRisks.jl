@@ -35,6 +35,18 @@ upper_time = 10.0
 times = Vector{Float64}(0.0:0.02:upper_time)
 
 ##########
+# Setup kernel choice   # !! TO BE IMPROVED !!
+##########
+
+# kernel choice
+CompetingRisks.kernel(x::Float64, t::Float64, eta::Float64) = CompetingRisks.kernel_OU(x, t, eta)
+CompetingRisks.kernel(x::Float64, t::Float64, cp::Float64, eta::Float64) = CompetingRisks.kernel_DL(x, t, cp, eta)
+
+# KernelInt choice
+CompetingRisks.KernelInt(x::Float64, t::Float64, eta::Float64) = CompetingRisks.KernelInt_OU(x, t, eta)
+CompetingRisks.KernelInt(x::Float64, t::Float64, cp::Float64, eta::Float64) = CompetingRisks.KernelInt_OU(x, t, cp, eta)
+
+##########
 # Gibbs sampling algorithm
 ##########
 
@@ -50,16 +62,15 @@ rf = RestaurantFranchise(crd; sigma = 0.25, sigma0 = 0.25)
 cm = CoxModel(crd)
 
 # initialize marginal estimators
-hazard_est = HazardMarginal(rf, cm, times)
 survival_est = SurvivalMarginal(rf, cm, times)
-incidence_est = HazardMarginal(rf, cm, times; incidence = true)
+incidence_est = IncidenceMarginalMarginal(rf, cm, times)
 
 # initialize conditional estimators
 hazard_est_ = HazardConditional(times, crd.D; cm.L)
 survival_est_ = SurvivalConditional(times; cm.L)
 
 # estimators vector
-marginal_estimators = [hazard_est, survival_est, incidence_est]
+marginal_estimators = [survival_est, incidence_est]
 conditional_estimators = [hazard_est_, survival_est_]
 
 # chain parameters

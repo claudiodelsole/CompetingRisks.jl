@@ -1,10 +1,8 @@
-# import utils
-import FastGaussQuadrature: gausslegendre
-import Distributions: UnivariateDistribution, pdf, ccdf
-import KernelDensitySJ: bwsj
+# export struct
+export LegendreIntegral
 
 # export functions
-export hazard, survival, integrate_trapz
+export hazard, survival, integrate, integrate_trapz
 
 """
     hazard(d::Type, t::Float64) where Type <: UnivariateDistribution
@@ -115,9 +113,8 @@ function newton(value::Float64, f::Function, fp::Function, start::Float64)
 
     end
 
-    # println("error")
-
-    return 0.0
+    # !! algorithm does not converge !!
+    return -Inf
 
 end # newton
 
@@ -144,150 +141,3 @@ function sample_categorical(masses::Vector{Float64})
     return K
 
 end # sample_categorical
-
-"""
-    smoother(values::Vector{Float64}, times::Vector{Float64}; bandwidth::Union{Float64,Nothing} = nothing, 
-            left::Function = t -> values[begin], right::Function = t -> values[end], eval_times::Vector{Float64} = times)
-
-"""
-function smoother(values::Vector{Float64}, times::Vector{Float64}; bandwidth::Union{Float64,Nothing} = nothing,
-        left::Function = t -> values[begin], right::Function = t -> values[end], eval_times::Vector{Float64} = times)
-
-    # compute bandwidth
-    if isnothing(bandwidth)
-        bandwidth = bwsj(eval_times)
-    end
-
-    # maximum bandwidth
-    max_width = 3.0 * bandwidth
-
-    # define extended times
-    dt = diff(times)[begin]
-    times_ext = dt:dt:max_width
-
-    # initialize output
-    smoothed = zeros(length(eval_times))
-
-    # loop on values
-    for (t, time) in enumerate(eval_times)
-
-        # initialize auxiliary variables
-        weights = 0.0
-
-        # left extension
-        for stime in times_ext
-
-            # compute time distance
-            tdist = abs(time - minimum(times)) + stime
-
-            if tdist > max_width    # time distance larger than max_width
-                break
-            end
-
-            # compute weight
-            weight = pdf(Normal(), tdist / bandwidth)
-
-            # update weights and smoothed values
-            weights += weight
-            smoothed[t] += weight * left(minimum(times) - stime)
-
-        end
-
-        for (s, stime) in enumerate(times)
-
-            # compute time distance
-            tdist = abs(stime - time)
-
-            if tdist > max_width    # time distance larger than max_width
-                continue
-            end
-
-            # compute weight
-            weight = pdf(Normal(), tdist / bandwidth)
-
-            # update weights and smoothed values
-            weights += weight
-            smoothed[t] += weight * values[s]
-
-        end
-
-        # right extension
-        for stime in times_ext
-
-            # compute time distance
-            tdist = abs(time - maximum(times)) + stime
-
-            if tdist > max_width    # time distance larger than max_width
-                break
-            end
-
-            # compute weight
-            weight = pdf(Normal(), tdist / bandwidth)
-
-            # update weights and smoothed values
-            weights += weight
-            smoothed[t] += weight * right(maximum(times) + stime)
-
-        end
-
-        # normalize smoothed value
-        smoothed[t] /= weights
-
-    end
-
-    return smoothed
-
-end # smoother
-
-"""
-    smoother(values::Matrix{Float64}, times::Vector{Float64}; bandwidth::Union{Float64,Nothing} = nothing, 
-            left::Function = t -> values[begin,:], right::Function = t -> values[end,:], eval_times::Vector{Float64} = times)
-
-"""
-function smoother(values::Matrix{Float64}, times::Vector{Float64}; bandwidth::Union{Float64,Nothing} = nothing,
-        left::Function = t -> values[begin,:], right::Function = t -> values[end,:], eval_times::Vector{Float64} = times)
-
-    # number of functions
-    D = size(values, 2)
-
-    # initialize output
-    smoothed = zeros(length(eval_times), D)
-
-    # loop on functions
-    for d in 1:D
-        smoothed[:,d] = smoother(values[:,d], times; 
-            bandwidth = bandwidth, left = t -> left(t)[d], right = t -> right(t)[d], eval_times = eval_times)
-    end
-
-    return smoothed
-
-end # smoother
-
-"""
-    smoother(values::Array{Float64,3}, times::Vector{Float64}; bandwidth::Union{Float64,Nothing} = nothing, 
-            left::Function = t -> values[begin,:,:], right::Function = t -> values[end,:,:], eval_times::Vector{Float64} = times)
-
-"""
-function smoother(values::Array{Float64,3}, times::Vector{Float64}; bandwidth::Union{Float64,Nothing} = nothing,
-        left::Function = t -> values[begin,:,:], right::Function = t -> values[end,:,:], eval_times::Vector{Float64} = times)
-
-    # number of categorical levels
-    L = size(values, 2)
-
-    # number of functions
-    D = size(values, 3)
-
-    # initialize output
-    smoothed = zeros(length(eval_times), L, D)
-
-    # loop on functions
-    for l in 1:L
-        for d in 1:D
-            smoothed[:,l,d] = smoother(values[:,l,d], times; 
-                bandwidth = bandwidth, left = t -> left(t)[l,d], right = t -> right(t)[l,d], eval_times = eval_times)
-        end
-    end
-
-    return smoothed
-
-end # smoother
