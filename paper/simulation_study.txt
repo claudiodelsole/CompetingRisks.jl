@@ -1,0 +1,100 @@
+### Frequentist estimators ###
+
+--- Observations counts ---
+counts: [34.11, 33.21, 32.68]
+
+--- Estimation errors ---
+survival: 0.07765002365541256
+cumincidence: [0.18118762667531862, 0.1978288539713361, 0.20577829599566286]
+
+
+### RestaurantFranchise estimators - marginal method ###
+
+--- Diagnostics ---
+Dishes: 15.224773199999998
+Theta: 10.785651030987005
+Alpha: 0.27300441444372053
+
+--- Survival function ---
+error: 0.04579112634163799
+inband: 0.6198009950248756
+bandwidth: 0.09253961044121475
+
+--- Incidence functions ---
+error: [0.09281330236749859, 0.08623013022950296, 0.10062900649941289]
+inband: 0.6839966832504146
+bandwidth: 0.41808078501435103
+
+--- Cumulative incidence functions ---
+error: [0.12696616940023406, 0.12174259239609536, 0.13269139078178566]
+inband: 0.4108789386401327
+bandwidth: 0.0519632331763563
+
+
+### RestaurantFranchise estimators - conditional method ###
+
+--- Diagnostics ---
+Dishes: 15.205936400000002
+Theta: 10.747179131938502
+Alpha: 0.2740169584827525
+
+--- Survival function ---
+error: 0.04752072061236337
+inband: 0.8860199004975126
+bandwidth: 0.14688408471863332
+
+--- Incidence functions ---
+error: [0.09560452965481804, 0.08709217871300894, 0.09943996777575839]
+inband: 0.9012106135986733
+bandwidth: 0.4646201878462683
+
+--- Cumulative incidence functions ---
+error: [0.13115067172437783, 0.12372195343963067, 0.13214307689177102]
+inband: 0.8886401326699837
+bandwidth: 0.1431016374391218
+
+
+### RestaurantArray estimators - marginal method ###
+
+--- Diagnostics ---
+Dishes: 32.197442
+Theta: 8.455625048457584
+Alpha: 0.4149212443620941
+
+--- Survival function ---
+error: 0.04973877121452428
+inband: 0.5162189054726368
+bandwidth: 0.08324982795841676
+
+--- Incidence functions ---
+error: [0.10464342141442887, 0.09354943372497741, 0.09983366838933033]
+inband: 0.6072470978441129
+bandwidth: 0.3914395183485605
+
+--- Cumulative incidence functions ---
+error: [0.1370733665392723, 0.13120955641162305, 0.13692505957030904]
+inband: 0.3904477611940299
+bandwidth: 0.051339502349841054
+
+
+### RestaurantArray estimators - conditional method ###
+
+--- Diagnostics ---
+Dishes: 32.1201692
+Theta: 8.404756767537675
+Alpha: 0.4189846475879714
+
+--- Survival function ---
+error: 0.05188513616245245
+inband: 0.7873134328358209
+bandwidth: 0.1430307183113201
+
+--- Incidence functions ---
+error: [0.10674596456293765, 0.09460705244597017, 0.0991976993722052]
+inband: 0.8471807628524046
+bandwidth: 0.4393679639230482
+
+--- Cumulative incidence functions ---
+error: [0.14019016415153518, 0.13353582710205422, 0.13734676758396538]
+inband: 0.8639469320066335
+bandwidth: 0.14695753323461028

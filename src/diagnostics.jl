@@ -2,13 +2,16 @@
 export Diagnostics
 
 # export functions
-export summary_dishes, summary_theta, summary_alpha, summary_eta, summary_coefficients, summary_loglikelihood, traceplots
+export summary_dishes, summary_theta, summary_alpha, summary_eta, summary_coefficients, summary_loglikelihood, traceplots, ess
 
 """
     struct Diagnostics
 
 """
 struct Diagnostics
+
+    # burnin parameter
+    burn_in::Int64
 
     # latent structure
     dishes_number::Vector{Int64}
@@ -31,7 +34,7 @@ struct Diagnostics
     loglik::Vector{Float64}
 
     # explicit constructor
-    function Diagnostics()
+    function Diagnostics(burn_in::Int64)
 
         # initialize latent structure vector
         dishes_number = Array{Int64}(undef, 0)
@@ -54,7 +57,7 @@ struct Diagnostics
         loglik = Array{Float64}(undef, 0)
 
         # create Diagnostics
-        return new(dishes_number, accept_dishes, theta, logalpha, logeta, accept_alpha, accept_eta, xi, accept_coeffs, loglik)
+        return new(burn_in, dishes_number, accept_dishes, theta, logalpha, logeta, accept_alpha, accept_eta, xi, accept_coeffs, loglik)
 
     end # Diagnostics
 
@@ -123,28 +126,26 @@ function append(dgn::Diagnostics, rf::Union{RestaurantFranchise,RestaurantArray}
 end # append
 
 """
-    summary_dishes(dgn::Diagnostics, burn_in::Int64)
+    summary_dishes(dgn::Diagnostics)
 
 """
-function summary_dishes(dgn::Diagnostics, burn_in::Int64)
+function summary_dishes(dgn::Diagnostics)
 
     # retrieve trace
-    trace = dgn.dishes_number
-    trace_start = trace[begin:burn_in]
-    trace_post = trace[burn_in+1:end]
+    (trace_start, trace_post) = split_trace(dgn.dishes_number, dgn.burn_in)
 
     # acceptance probabilities
-    accept = dgn.accept_dishes[burn_in+1:end]
+    (_, accept) = split_trace(dgn.accept_dishes, dgn.burn_in)
 
     # print output
     println("--- Dishes number ---")
     println("Posterior mean: ", string(mean(trace_post)))
-    println("Acceptance probability: ", string(mean(accept)))
+    println("Acceptance probability: ", string(mean(filter(!isnan, accept))))
 
     # traceplot
     pltrace = plot(title = "Traceplot", legend = false)
-    plot!(pltrace, 1:burn_in, trace_start, linecolor = "gray")
-    plot!(pltrace, burn_in+1:length(trace), trace_post, linecolor = 1)
+    plot!(pltrace, 1:length(trace_start), trace_start, linecolor = "gray")
+    plot!(pltrace, length(trace_start).+(1:length(trace_post)), trace_post, linecolor = 1)
     hline!(pltrace, [mean(trace_post)], linecolor = 2)
 
     # histogram
@@ -158,15 +159,13 @@ function summary_dishes(dgn::Diagnostics, burn_in::Int64)
 end # summary_dishes
 
 """
-    summary_theta(dgn::Diagnostics, burn_in::Int64)
+    summary_theta(dgn::Diagnostics)
 
 """
-function summary_theta(dgn::Diagnostics, burn_in::Int64)
+function summary_theta(dgn::Diagnostics)
 
     # retrieve trace
-    trace = dgn.theta
-    trace_start = trace[begin:burn_in]
-    trace_post = trace[burn_in+1:end]
+    (trace_start, trace_post) = split_trace(dgn.theta, dgn.burn_in)
 
     # print output
     println("--- Base measure mass ---")
@@ -174,8 +173,8 @@ function summary_theta(dgn::Diagnostics, burn_in::Int64)
 
     # traceplot
     pltrace = plot(title = "Traceplot", legend = false)
-    plot!(pltrace, 1:burn_in, trace_start, linecolor = "gray")
-    plot!(pltrace, burn_in+1:length(trace), trace_post, linecolor = 1)
+    plot!(pltrace, 1:length(trace_start), trace_start, linecolor = "gray")
+    plot!(pltrace, length(trace_start).+(1:length(trace_post)), trace_post, linecolor = 1)
     hline!(pltrace, [mean(trace_post)], linecolor = 2)
 
     # histogram
@@ -189,28 +188,26 @@ function summary_theta(dgn::Diagnostics, burn_in::Int64)
 end # summary_theta
 
 """
-    summary_alpha(dgn::Diagnostics, burn_in::Int64)
+    summary_alpha(dgn::Diagnostics)
 
 """
-function summary_alpha(dgn::Diagnostics, burn_in::Int64)
+function summary_alpha(dgn::Diagnostics)
 
     # retrieve trace
-    trace = dgn.logalpha
-    trace_start = trace[begin:burn_in]
-    trace_post = trace[burn_in+1:end]
+    (trace_start, trace_post) = split_trace(dgn.logalpha, dgn.burn_in)
 
-    # acceptance probability
-    accept = dgn.accept_alpha[burn_in+1:end]
+    # acceptance probabilities
+    (_, accept) = split_trace(dgn.accept_alpha, dgn.burn_in)
 
     # print output
-    println("--- Kernel parameter ---")
+    println("--- Kernel height parameter ---")
     println("Posterior mean: ", string(exp(mean(trace_post))))
-    println("Acceptance rate: ", string(mean(accept)))
+    println("Acceptance rate: ", string(mean(filter(!isnan, accept))))
 
     # traceplot
     pltrace = plot(title = "Traceplot", legend = false)
-    plot!(pltrace, 1:burn_in, trace_start, linecolor = "gray")
-    plot!(pltrace, burn_in+1:length(trace), trace_post, linecolor = 1)
+    plot!(pltrace, 1:length(trace_start), trace_start, linecolor = "gray")
+    plot!(pltrace, length(trace_start).+(1:length(trace_post)), trace_post, linecolor = 1)
     hline!(pltrace, [mean(trace_post)], linecolor = 2)
 
     # histogram
@@ -224,28 +221,26 @@ function summary_alpha(dgn::Diagnostics, burn_in::Int64)
 end # summary_alpha
 
 """
-    summary_eta(dgn::Diagnostics, burn_in::Int64)
+    summary_eta(dgn::Diagnostics)
 
 """
-function summary_eta(dgn::Diagnostics, burn_in::Int64)
+function summary_eta(dgn::Diagnostics)
 
     # retrieve trace
-    trace = dgn.logeta
-    trace_start = trace[begin:burn_in]
-    trace_post = trace[burn_in+1:end]
+    (trace_start, trace_post) = split_trace(dgn.logeta, dgn.burn_in)
 
-    # acceptance probability
-    accept = dgn.accept_eta[burn_in+1:end]
+    # acceptance probabilities
+    (_, accept) = split_trace(dgn.accept_eta, dgn.burn_in)
 
     # print output
-    println("--- Kernel parameter ---")
+    println("--- Kernel scale parameter ---")
     println("Posterior mean: ", string(exp(mean(trace_post))))
     println("Acceptance rate: ", string(mean(accept)))
 
     # traceplot
     pltrace = plot(title = "Traceplot", legend = false)
-    plot!(pltrace, 1:burn_in, trace_start, linecolor = "gray")
-    plot!(pltrace, burn_in+1:length(trace), trace_post, linecolor = 1)
+    plot!(pltrace, 1:length(trace_start), trace_start, linecolor = "gray")
+    plot!(pltrace, length(trace_start).+(1:length(trace_post)), trace_post, linecolor = 1)
     hline!(pltrace, [mean(trace_post)], linecolor = 2)
 
     # histogram
@@ -259,19 +254,18 @@ function summary_eta(dgn::Diagnostics, burn_in::Int64)
 end # summary_eta
 
 """
-    summary_coefficient(dgn::Diagnostics, burn_in::Int64; l::Int64 = 1)
+    summary_coefficient(dgn::Diagnostics; l::Int64 = 1)
 
 """
-function summary_coefficients(dgn::Diagnostics, burn_in::Int64; l::Int64 = 1)
+function summary_coefficients(dgn::Diagnostics; l::Int64 = 1)
 
-    # retrieve traces
-    trace = reshape(dgn.xi, length(dgn.accept_alpha), :)
-    trace_start = trace[begin:burn_in, l]
-    trace_post = trace[burn_in+1:end, l]
+    # retrieve trace
+    trace = reshape(dgn.xi, length(dgn.dishes_number), :)
+    (trace_start, trace_post) = split_trace(trace[:,l], dgn.burn_in)
 
-    # acceptance probability
-    accept = reshape(dgn.accept_coeffs, length(dgn.accept_alpha), :)
-    accept = dgn.accept_coeffs[burn_in+1:end, l]
+    # acceptance probabilities
+    accept = reshape(dgn.accept_coeffs, length(dgn.dishes_number), :)
+    (_, accept) = split_trace(accept[:,l], dgn.burn_in)
 
     # print output
     println("--- Regression coefficient: Group ", string(l), " ---")
@@ -280,8 +274,8 @@ function summary_coefficients(dgn::Diagnostics, burn_in::Int64; l::Int64 = 1)
 
     # traceplot
     pltrace = plot(title = "Traceplot", legend = false)
-    plot!(pltrace, 1:burn_in, trace_start, linecolor = "gray")
-    plot!(pltrace, burn_in+1:length(trace), trace_post, linecolor = l)
+    plot!(pltrace, 1:length(trace_start), trace_start, linecolor = "gray")
+    plot!(pltrace, length(trace_start).+(1:length(trace_post)), trace_post, linecolor = l)
     hline!(pltrace, [mean(trace_post)], linecolor = l+1)
 
     # histogram
@@ -295,24 +289,36 @@ function summary_coefficients(dgn::Diagnostics, burn_in::Int64; l::Int64 = 1)
 end # summary_coefficient
 
 """
-    summary_loglikelihood(dgn::Diagnostics, burn_in::Int64)
+    summary_loglikelihood(dgn::Diagnostics)
 
 """
-function summary_loglikelihood(dgn::Diagnostics, burn_in::Int64)
+function summary_loglikelihood(dgn::Diagnostics)
 
     # retrieve trace
-    trace = dgn.loglik
-    trace_start = trace[begin:burn_in]
-    trace_post = trace[burn_in+1:end]
+    (trace_start, trace_post) = split_trace(dgn.loglik, dgn.burn_in)
 
     # traceplot
     pltrace = plot(title = "Log-Likelihood", legend = false)
-    plot!(pltrace, 1:burn_in, trace_start, linecolor = "gray")
-    plot!(pltrace, burn_in+1:length(trace), trace_post, linecolor = 1)
+    plot!(pltrace, 1:length(trace_start), trace_start, linecolor = "gray")
+    plot!(pltrace, length(trace_start).+(1:length(trace_post)), trace_post, linecolor = 1)
 
     return pltrace
 
 end # summary_loglikelihood
+
+"""
+    split_trace(trace::Union{Vector{Float64},Vector{Int64}}, burn_in::Int64)
+
+"""
+function split_trace(trace::Union{Vector{Float64},Vector{Int64}}, burn_in::Int64)
+
+    # retrieve trace
+    trace_start = trace[begin:burn_in]
+    trace_post = trace[burn_in+1:end]
+
+    return (trace_start, trace_post)
+
+end # split_trace
 
 """
     traceplots(estimator::HazardMarginal, time::Float64; l::Int64 = 0)
@@ -332,7 +338,7 @@ function traceplots(estimator::HazardMarginal, time::Float64; l::Int64 = 0)
 
     # retrieve trace
     t = sum(time .>= estimator.times)
-    trace = transpose(post_samples[t,l+1,:,:])
+    trace = Matrix{Float64}(transpose(post_samples[t,l+1,:,:]))
 
     # traceplot
     pltrace = plot(title = "Traceplots")
@@ -344,7 +350,7 @@ function traceplots(estimator::HazardMarginal, time::Float64; l::Int64 = 0)
     hline!(plcor, [0.0], linecolor = "black", linestyle = :dash, label = false)
 
     # print output
-    println("ESS: ", string([ess(trace[:,d]) for d in 1:estimator.D]))
+    println("ESS: ", string(ess_(trace)))
 
     # combine plots
     pl = plot(pltrace, plcor, layout = (1,2))
@@ -378,7 +384,7 @@ function traceplots(estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
     hline!(plcor, [0.0], linecolor = "black", linestyle = :dash)
 
     # print output
-    println("ESS: ", string(ess(trace)))
+    println("ESS: ", string(ess_(trace)))
 
     # combine plots
     pl = plot(pltrace, plcor, layout = (1,2))
@@ -401,7 +407,7 @@ function traceplots(hazard_estimator::IncidenceMarginal, survival_estimator::Sur
 
     # retrieve trace
     t = sum(time .>= hazard_estimator.times)
-    trace = transpose(post_samples[t,l+1,:,:])
+    trace = Matrix{Float64}(transpose(post_samples[t,l+1,:,:]))
 
     # traceplot
     pltrace = plot(title = "Traceplots")
@@ -413,7 +419,7 @@ function traceplots(hazard_estimator::IncidenceMarginal, survival_estimator::Sur
     hline!(plcor, [0.0], linecolor = "black", linestyle = :dash, label = false)
 
     # print output
-    println("ESS: ", string([ess(trace[:,d]) for d in 1:hazard_estimator.D]))
+    println("ESS: ", string(ess_(trace)))
 
     # combine plots
     pl = plot(pltrace, plcor, layout = (1,2))
@@ -439,7 +445,7 @@ function traceplots(estimator::IncidenceMarginal, time::Float64; l::Int64 = 0)
 
     # retrieve trace
     t = sum(time .>= estimator.times)
-    trace = transpose(post_samples[t,l+1,:,:])
+    trace = Matrix{Float64}(transpose(post_samples[t,l+1,:,:]))
 
     # traceplot
     pltrace = plot(title = "Traceplots")
@@ -451,7 +457,7 @@ function traceplots(estimator::IncidenceMarginal, time::Float64; l::Int64 = 0)
     hline!(plcor, [0.0], linecolor = "black", linestyle = :dash, label = false)
 
     # print output
-    println("ESS: ", string([ess(trace[:,d]) for d in 1:estimator.D]))
+    println("ESS: ", string(ess_(trace)))
 
     # combine plots
     pl = plot(pltrace, plcor, layout = (1,2))
@@ -460,10 +466,66 @@ function traceplots(estimator::IncidenceMarginal, time::Float64; l::Int64 = 0)
 end # traceplots
 
 """
-    ess(trace::Vector{Float64})
+    ess(estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
 
 """
-ess(trace::Vector{Float64}) = length(trace) / (2.0 * sum(autocor(trace)) - 1.0)
+function ess(estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
+
+    # reshape samples
+    post_samples = reshape(estimator.post_samples, length(estimator.times), estimator.L + 1, :)
+
+    # retrieve trace
+    t = sum(time .>= estimator.times)
+    trace = post_samples[t,l+1,:]
+
+    # compute ess
+    return ess_(trace)
+
+end # ess
+
+"""
+    ess(estimator::Union{HazardMarginal,IncidenceMarginal}, time::Float64; l::Int64 = 0)
+
+"""
+function ess(estimator::Union{HazardMarginal,IncidenceMarginal}, time::Float64; l::Int64 = 0)
+
+    # reshape samples
+    post_samples = reshape(estimator.post_samples, length(estimator.times), estimator.L + 1, estimator.D, :)
+
+    # retrieve trace
+    t = sum(time .>= estimator.times)
+    trace = transpose(post_samples[t,l+1,:,:])
+
+    # compute ess
+    return ess_(trace)
+
+end # ess
+
+"""
+    ess(hazard_estimator::IncidenceMarginal, survival_estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
+
+"""
+function ess(hazard_estimator::IncidenceMarginal, survival_estimator::SurvivalMarginal, time::Float64; l::Int64 = 0)
+
+    # reshape samples
+    post_samples = reshape_samples(hazard_estimator, survival_estimator)
+
+    # retrieve trace
+    t = sum(time .>= hazard_estimator.times)
+    trace = transpose(post_samples[t,l+1,:,:])
+
+    # compute ess
+    return ess_(trace)
+
+end # ess
+
+"""
+    ess_(trace::Vector{Float64})
+    ess_(traces::Matrix{Float64})
+
+"""
+ess_(trace::Vector{Float64}) = length(trace) / (2.0 * sum(autocor(trace)) - 1.0)
+ess_(trace::Matrix{Float64}) = [ess_(trace[:,d]) for d in 1:size(trace, 2)]
 
 """
     loglikelihood(rf::RestaurantFranchise)
@@ -516,7 +578,7 @@ function loglikelihood(rf::RestaurantFranchise)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     else    # regression model
 
@@ -529,7 +591,7 @@ function loglikelihood(rf::RestaurantFranchise)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * integrate(g, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
 
     end
 
@@ -583,7 +645,7 @@ function loglikelihood(rf::RestaurantArray)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * rf.D * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     else    # regression model
 
@@ -596,7 +658,7 @@ function loglikelihood(rf::RestaurantArray)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(g, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * rf.D * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
 
     end
 

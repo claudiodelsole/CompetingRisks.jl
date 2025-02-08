@@ -210,7 +210,7 @@ function sample_dependent_measures(rf::RestaurantFranchise, locations::Vector{Fl
 
             # algorithm starting point
             if logjump >= 0.0 logjump = -1.0 end
-            while rf.theta * f(logjump) <= spp
+            while mass_base * f(logjump) <= spp
                 logjump *= 2.0
             end
 

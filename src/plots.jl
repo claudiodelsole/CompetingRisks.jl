@@ -13,7 +13,7 @@ function summary_data(crd::CompetingRisksDataset)
 
     # histogram
     plhist = plot(title = "Times to events", legend = false)
-    histogram!(plhist, crd.T, normalize = :none)
+    histogram!(plhist, crd.T, normalize = :none, bins = :scott)
 
     # events by cause
     plcauses = plot(title = "Number of events", legend = false)
@@ -146,7 +146,7 @@ function incidence_plot(times::Vector{Float64}, incidence_post::Matrix{Float64};
     end
 
     # labels and colors
-    mycolors = reshape([d+1 for d in diseases], 1, :)
+    mycolors = reshape([d for d in diseases], 1, :)
     mylabels = reshape(["cause " * string(d) for d in diseases], 1, :)
 
     if cum == false     # incidence estimates
@@ -201,7 +201,7 @@ function proportion_plot(times::Vector{Float64}, proportion_post::Matrix{Float64
     end
 
     # labels and colors
-    mycolors = reshape([d+1 for d in diseases], 1, :)
+    mycolors = reshape([d for d in diseases], 1, :)
     mylabels = reshape(["cause " * string(d) for d in diseases], 1, :)
 
     # plot diseases proportions posterior estimates

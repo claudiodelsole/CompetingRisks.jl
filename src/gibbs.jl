@@ -12,7 +12,7 @@ function Gibbs(rf::Union{RestaurantFranchise,RestaurantArray}, marginal_estimato
         thin::Int64 = 10, burn_in::Int64 = 0, started::Bool = false) where {TypeM <: MarginalEstimator, TypeC <: ConditionalEstimator}
 
     # create Diagnostics
-    dgn = Diagnostics()
+    dgn = Diagnostics(burn_in)
 
     # initialize latent variables
     if started == false
@@ -148,7 +148,7 @@ function mass_base(time::Float64, rf::Union{RestaurantFranchise,RestaurantArray}
     f(x::Float64) = likelihood_base(x, time, rf) * pdf(rf.base_measure, x)
 
     # compute integral
-    return integrate(f, rf.legendre; lower = 0.0, upper = time)
+    return integrate(f, legendre; lower = 0.0, upper = time)
 
 end # mass_base
 
@@ -758,7 +758,7 @@ function Gibbs(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel, mar
         thin::Int64 = 10, burn_in::Int64 = 0, started::Bool = false) where {TypeM <: MarginalEstimator, TypeC <: ConditionalEstimator}
     
     # create Diagnostics
-    dgn = Diagnostics()
+    dgn = Diagnostics(burn_in)
 
     # initialize latent variables
     if started == false
@@ -827,7 +827,7 @@ function Gibbs_initialize(rf::Union{RestaurantFranchise,RestaurantArray}, cm::Co
     resample_alpha(rf)
     resample_eta(rf)
 
-    # resampling cefficients
+    # resampling coefficients
     resample_coefficients(rf, cm)
 
 end # Gibbs_initialize
@@ -853,7 +853,7 @@ function Gibbs_step(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel
     (accept_alpha, flag_alpha) = resample_alpha(rf)
     (accept_eta, flag_eta) = resample_eta(rf)
 
-    # resampling cefficients
+    # resampling coefficients
     (accept_coeffs, flag_coeffs) = resample_coefficients(rf, cm)
 
     # precompute quantities
@@ -874,7 +874,7 @@ function mass_base(time::Float64, cp::Float64, rf::Union{RestaurantFranchise,Res
     f(x::Float64) = likelihood_base(x, time, cp, rf) * pdf(rf.base_measure, x)
 
     # compute integral
-    return integrate(f, rf.legendre; lower = 0.0, upper = time)
+    return integrate(f, legendre; lower = 0.0, upper = time)
 
 end # mass_base
 

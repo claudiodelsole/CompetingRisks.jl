@@ -363,7 +363,7 @@ function hazard_base(rf::RestaurantFranchise, times::Vector{Float64})
 
     # store values
     for (t, time) in enumerate(times)
-        estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), rf.legendre; lower = 0.0, upper = time)
+        estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), legendre; lower = 0.0, upper = time)
     end
 
     return estimate
@@ -389,7 +389,7 @@ function hazard_base(rf::RestaurantArray, times::Vector{Float64})
 
     # store values
     for (t, time) in enumerate(times)
-        estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), rf.legendre; lower = 0.0, upper = time)
+        estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), legendre; lower = 0.0, upper = time)
     end
 
     return estimate
@@ -520,7 +520,7 @@ function survival_base(rf::RestaurantFranchise, times::Vector{Float64})
 
     # store values
     for (t, time) in enumerate(times)
-        estimate[t] = exp( - rf.theta * integrate(x::Float64 -> f(x, time), rf.legendre; lower = 0.0, upper = time) )
+        estimate[t] = exp( - rf.theta * integrate(x::Float64 -> f(x, time), legendre; lower = 0.0, upper = time) )
     end
 
     return estimate
@@ -546,7 +546,7 @@ function survival_base(rf::RestaurantArray, times::Vector{Float64})
 
     # store values
     for (t, time) in enumerate(times)
-        estimate[t] = exp( - rf.theta * rf.D * integrate(x::Float64 -> f(x, time), rf.legendre; lower = 0.0, upper = time) )
+        estimate[t] = exp( - rf.theta * rf.D * integrate(x::Float64 -> f(x, time), legendre; lower = 0.0, upper = time) )
     end
 
     return estimate
@@ -688,7 +688,7 @@ function incidence_base(rf::RestaurantFranchise, times::Vector{Float64})
 
     # store values
     for (t, time) in enumerate(times)
-        estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), rf.legendre; lower = 0.0, upper = time)
+        estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), legendre; lower = 0.0, upper = time)
     end
 
     return estimate
@@ -715,7 +715,7 @@ function incidence_base(rf::RestaurantArray, times::Vector{Float64})
 
     # store values
     for (t, time) in enumerate(times)
-        estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), rf.legendre; lower = 0.0, upper = time)
+        estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), legendre; lower = 0.0, upper = time)
     end
 
     return estimate
@@ -970,7 +970,7 @@ function hazard_base(rf::RestaurantFranchise, CoxProd::Vector{Float64}, times::V
     # store values
     for (t, time) in enumerate(times)
         for (l, cp) in enumerate(CoxProd)
-            estimate[t,l] = rf.theta * integrate(x::Float64 -> f(x, time, cp), rf.legendre; lower = 0.0, upper = time)
+            estimate[t,l] = rf.theta * integrate(x::Float64 -> f(x, time, cp), legendre; lower = 0.0, upper = time)
         end
     end
 
@@ -998,7 +998,7 @@ function hazard_base(rf::RestaurantArray, CoxProd::Vector{Float64}, times::Vecto
     # store values
     for (t, time) in enumerate(times)
         for (l, cp) in enumerate(CoxProd)
-            estimate[t,l] = rf.theta * integrate(x::Float64 -> f(x, time, cp), rf.legendre; lower = 0.0, upper = time)
+            estimate[t,l] = rf.theta * integrate(x::Float64 -> f(x, time, cp), legendre; lower = 0.0, upper = time)
         end
     end
 
@@ -1137,7 +1137,7 @@ function survival_base(rf::RestaurantFranchise, CoxProd::Vector{Float64}, times:
     # store values
     for (t, time) in enumerate(times)
         for (l, cp) in enumerate(CoxProd)
-            estimate[t,l] = exp( - rf.theta * integrate(x::Float64 -> f(x, time, cp), rf.legendre; lower = 0.0, upper = time) )
+            estimate[t,l] = exp( - rf.theta * integrate(x::Float64 -> f(x, time, cp), legendre; lower = 0.0, upper = time) )
         end
     end
 
@@ -1165,7 +1165,7 @@ function survival_base(rf::RestaurantArray, CoxProd::Vector{Float64}, times::Vec
     # store values
     for (t, time) in enumerate(times)
         for (l, cp) in enumerate(CoxProd)
-            estimate[t,l] = exp( - rf.theta * rf.D * integrate(x::Float64 -> f(x, time, cp), rf.legendre; lower = 0.0, upper = time) )
+            estimate[t,l] = exp( - rf.theta * rf.D * integrate(x::Float64 -> f(x, time, cp), legendre; lower = 0.0, upper = time) )
         end
     end
 
@@ -1314,7 +1314,7 @@ function incidence_base(rf::RestaurantFranchise, CoxProd::Vector{Float64}, times
     # store values
     for (t, time) in enumerate(times)
         for (l, cp) in enumerate(CoxProd)
-            estimate[t,l] = rf.theta * integrate(x::Float64 -> f(x, time, cp), rf.legendre; lower = 0.0, upper = time)
+            estimate[t,l] = rf.theta * integrate(x::Float64 -> f(x, time, cp), legendre; lower = 0.0, upper = time)
         end
     end
 
@@ -1343,7 +1343,7 @@ function incidence_base(rf::RestaurantArray, CoxProd::Vector{Float64}, times::Ve
     # store values
     for (t, time) in enumerate(times)
         for (l, cp) in enumerate(CoxProd)
-            estimate[t,l] = rf.theta * integrate(x::Float64 -> f(x, time, cp), rf.legendre; lower = 0.0, upper = time)
+            estimate[t,l] = rf.theta * integrate(x::Float64 -> f(x, time, cp), legendre; lower = 0.0, upper = time)
         end
     end
 

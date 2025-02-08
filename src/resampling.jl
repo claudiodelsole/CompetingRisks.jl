@@ -8,7 +8,7 @@ function resample_dishes(rf::RestaurantFranchise)
     accept_dishes = 0.0
 
     # relative standard deviation
-    mhdev = 0.5
+    mhdev = mhdev_dishes[]
 
     for (dish, rdish) in enumerate(rf.r)    # loop on dishes
 
@@ -54,7 +54,7 @@ function resample_dishes(rf::RestaurantArray)
     accept_dishes = 0.0
 
     # relative standard deviation
-    mhdev = 0.5
+    mhdev = mhdev_dishes[]
 
     for (table, ntable) in enumerate(rf.n)    # loop on tables
 
@@ -168,7 +168,7 @@ function resample_theta(rf::RestaurantFranchise)
         f(x::Float64) = psi(rf.D * psi(rf.alpha * KernelInt(x, rf.T, rf.eta), rf.beta, rf.sigma), rf.beta0, rf.sigma0) * pdf(rf.base_measure, x)
 
         # compute integral
-        I = integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        I = integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     else    # regression model
 
@@ -176,7 +176,7 @@ function resample_theta(rf::RestaurantFranchise)
         g(x::Float64) = psi(rf.D * psi(rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.eta), rf.beta, rf.sigma), rf.beta0, rf.sigma0) * pdf(rf.base_measure, x)
 
         # compute integral
-        I = integrate(g, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        I = integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
 
     end
 
@@ -200,7 +200,7 @@ function resample_theta(rf::RestaurantArray)
         f(x::Float64) = psi(rf.alpha * KernelInt(x, rf.T, rf.eta), rf.beta, rf.sigma) * pdf(rf.base_measure, x)
 
         # compute integral
-        I = integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        I = integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     else    # regression model
 
@@ -208,7 +208,7 @@ function resample_theta(rf::RestaurantArray)
         g(x::Float64) = psi(rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.eta), rf.beta, rf.sigma) * pdf(rf.base_measure, x)
 
         # compute integral
-        I = integrate(g, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        I = integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
 
     end
 
@@ -227,7 +227,7 @@ function resample_alpha(rf::Union{RestaurantFranchise,RestaurantArray})
     flag = false
 
     # relative standard deviation
-    mhdev = 2.0
+    mhdev = mhdev_alpha[]
 
     # prior for alpha
     prior = Gamma(1.0, 10.0)
@@ -297,7 +297,7 @@ function loglikelihood_alpha(alpha::Float64, rf::RestaurantFranchise)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     else    # regression model
 
@@ -313,7 +313,7 @@ function loglikelihood_alpha(alpha::Float64, rf::RestaurantFranchise)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * integrate(g, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
 
     end
 
@@ -359,7 +359,7 @@ function loglikelihood_alpha(alpha::Float64, rf::RestaurantArray)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * rf.D * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     else    # regression model
 
@@ -375,7 +375,7 @@ function loglikelihood_alpha(alpha::Float64, rf::RestaurantArray)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(g, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * rf.D * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
 
     end
 
@@ -393,7 +393,7 @@ function resample_eta(rf::Union{RestaurantFranchise,RestaurantArray})
     flag = false
 
     # relative standard deviation
-    mhdev = 1.0
+    mhdev = mhdev_eta[]
 
     # prior for eta
     prior = Gamma(1.0, 10.0)
@@ -498,7 +498,7 @@ function loglikelihood_eta(eta::Float64, rf::RestaurantFranchise)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     else    # regression model
 
@@ -514,7 +514,7 @@ function loglikelihood_eta(eta::Float64, rf::RestaurantFranchise)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * integrate(g, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
 
     end
 
@@ -580,7 +580,7 @@ function loglikelihood_eta(eta::Float64, rf::RestaurantArray)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * rf.D * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     else    # regression model
 
@@ -596,7 +596,7 @@ function loglikelihood_eta(eta::Float64, rf::RestaurantArray)
         end
 
         # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(g, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+        loglik -= rf.theta * rf.D * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
 
     end
 
@@ -620,7 +620,7 @@ function resample_coefficients(rf::Union{RestaurantFranchise,RestaurantArray}, c
     prior = Normal(0.0, 10.0)
 
     # standard deviation
-    mhdev = 1.0
+    mhdev = mhdev_coefficients[]
 
     # initialize proposed exponential CoxProducts
     CoxProd = ones(Float64, rf.N)
@@ -715,7 +715,7 @@ function loglikelihood_coeffs(CoxProd::Vector{Float64}, rf::RestaurantFranchise)
     end
 
     # compute loglikelihood
-    loglik -= rf.theta * integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+    loglik -= rf.theta * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     return loglik
 
@@ -758,7 +758,7 @@ function loglikelihood_coeffs(CoxProd::Vector{Float64}, rf::RestaurantArray)
     end
 
     # compute loglikelihood
-    loglik -= rf.theta * rf.D * integrate(f, rf.legendre; lower = 0.0, upper = maximum(rf.T))
+    loglik -= rf.theta * rf.D * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
 
     return loglik
 

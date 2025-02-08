@@ -31,7 +31,7 @@ function hazard_prior(rf::Union{RestaurantFranchise,RestaurantArray}, times::Vec
 
     # store values
     for (t, time) in enumerate(times)
-        prior_estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), rf.legendre; lower = 0.0, upper = time)
+        prior_estimate[t] = rf.theta * integrate(x::Float64 -> f(x, time), legendre; lower = 0.0, upper = time)
     end
 
     if cum == true  # integrate over times
@@ -72,7 +72,7 @@ function survival_prior(rf::Union{RestaurantFranchise,RestaurantArray}, times::V
 
     # store values
     for (t, time) in enumerate(times)
-        prior_estimate[t] = exp( - rf.theta * integrate(x::Float64 -> f(x, time), rf.legendre; lower = 0.0, upper = time) )
+        prior_estimate[t] = exp( - rf.theta * integrate(x::Float64 -> f(x, time), legendre; lower = 0.0, upper = time) )
     end
 
     return prior_estimate
@@ -130,8 +130,8 @@ function incidence_prior(rf::Union{RestaurantFranchise,RestaurantArray}, times::
 
     # store values
     for (t, time) in enumerate(times)
-        prior_estimate[t] = rf.theta * integrate(x::Float64 -> f_hazard(x, time), rf.legendre; lower = 0.0, upper = time)
-        prior_estimate[t] *= exp( - rf.theta * integrate(x::Float64 -> f_survival(x, time), rf.legendre; lower = 0.0, upper = time) )
+        prior_estimate[t] = rf.theta * integrate(x::Float64 -> f_hazard(x, time), legendre; lower = 0.0, upper = time)
+        prior_estimate[t] *= exp( - rf.theta * integrate(x::Float64 -> f_survival(x, time), legendre; lower = 0.0, upper = time) )
     end
 
     if cum == true  # integrate over times

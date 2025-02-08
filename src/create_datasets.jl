@@ -101,22 +101,28 @@ function summary_models(models::Vector{Type}) where Type <: UnivariateDistributi
     times = Vector{Float64}(0.0:step:upper_time)
 
     # true hazard functions
-    hazard_true = [hazard(model, t) for t in times, model in models]
+    # hazard_true = [hazard(model, t) for t in times, model in models]
 
     # true incidence functions
     incidence_true = [hazard(model, t) * prod([survival(model, t) for model in models]) for t in times, model in models]
 
+    # true proportions
+    proportion_true = [hazard(model, t) / sum([hazard(model, t) for model in models]) for t in times, model in models]
+
     # hazard functions
-    plhazard = plot(title = "Hazard functions", legend = :bottomright)
-    plot!(plhazard, times, hazard_true, linecolor = mycolors, label = mylabels)
-    plot!()
+    # plhazard = plot(title = "Hazard functions", legend = :bottomright)
+    # plot!(plhazard, times, hazard_true, linecolor = mycolors, label = mylabels)
 
     # incidence functions
     plincidence = plot(title = "Incidence functions", legend = :topright)
     plot!(plincidence, times, incidence_true, linecolor = mycolors, label = mylabels)
 
+    # proportions
+    plprop = plot(title = "Probabilities of failure", legend = :topright)
+    plot!(plprop, times, proportion_true, linecolor = mycolors, label = mylabels)
+
     # combine plots
-    pl = plot(plhazard, plincidence, layout = (1,2))
+    pl = plot(plincidence, plprop, layout = (1,2))
     return pl
 
 end # summary_models

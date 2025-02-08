@@ -19,8 +19,8 @@ kernel_OU(x::Float64, t::Float64, eta::Float64) = Float64(x <= t) * sqrt(2.0 * e
 kernel_OU(x::Float64, t::Float64, cp::Float64, eta::Float64) = (cp) * Float64(x <= t) * sqrt(2.0 * eta) * exp( - eta * (t-x) )
 
 # power law kernel
-kernel_pl(x::Float64, t::Float64, eta::Float64) = Float64(x <= t) * eta / ( 1.0 + eta * (t-x) )
-kernel_pl(x::Float64, t::Float64, cp::Float64, eta::Float64) = (cp) * Float64(x <= t) * eta / ( 1.0 + eta * (t-x) )
+# kernel_pl(x::Float64, t::Float64, eta::Float64) = Float64(x <= t) * eta / ( 1.0 + eta * (t-x) )
+# kernel_pl(x::Float64, t::Float64, cp::Float64, eta::Float64) = (cp) * Float64(x <= t) * eta / ( 1.0 + eta * (t-x) )
 
 """
     KernelInt(x::Float64, t::Float64, eta::Float64)
@@ -43,8 +43,8 @@ KernelInt_OU(x::Float64, t::Float64, eta::Float64) = Float64(x <= t) * sqrt(2.0 
 KernelInt_OU(x::Float64, t::Float64, cp::Float64, eta::Float64) = (cp) * Float64(x <= t) * sqrt(2.0 / eta) * (1.0 - exp( - eta * (t-x) ))
 
 # power law kernel
-KernelInt_pl(x::Float64, t::Float64, eta::Float64) = (x <= t) ? log( 1.0 + eta * (t-x) ) : 0.0
-KernelInt_pl(x::Float64, t::Float64, cp::Float64, eta::Float64) = (x <= t) ? (cp) * log( 1.0 + eta * (t-x) ) : 0.0
+# KernelInt_pl(x::Float64, t::Float64, eta::Float64) = (x <= t) ? log( 1.0 + eta * (t-x) ) : 0.0
+# KernelInt_pl(x::Float64, t::Float64, cp::Float64, eta::Float64) = (x <= t) ? (cp) * log( 1.0 + eta * (t-x) ) : 0.0
 
 """
     KernelInt(x::Float64, T::Vector{Float64}, eta::Float64)
@@ -103,7 +103,7 @@ end # KernelInt
 function psi(u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0)
     
     if sigma == 0.0     # gamma CRM
-        return log( 1 + u / (beta + posterior) )
+        return log( 1.0 + u / (beta + posterior) )
     end
 
     return ( (beta + posterior + u)^sigma - (beta + posterior)^sigma ) / sigma 
@@ -118,9 +118,9 @@ end # psi
     logtau_diff(m::Int64, u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0)
 
 """
-tau(u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0) = (beta + posterior + u) ^ (sigma-1)
-tau(m::Int64, u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0) = gamma(m-sigma) / gamma(1-sigma) * (beta + posterior + u) ^ (sigma-m)
-logtau(m::Int64, u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0) = loggamma(m-sigma) - loggamma(1-sigma) - (m-sigma) * log(beta + posterior + u)
+tau(u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0) = (beta + posterior + u) ^ (sigma-1.0)
+tau(m::Int64, u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0) = gamma(m-sigma) / gamma(1.0-sigma) * (beta + posterior + u) ^ (sigma-m)
+logtau(m::Int64, u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0) = loggamma(m-sigma) - loggamma(1.0-sigma) - (m-sigma) * log(beta + posterior + u)
 tau_ratio(m::Int64, u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0) = (m-sigma) / (beta + posterior + u)
 logtau_diff(m::Int64, u::Float64, beta::Float64, sigma::Float64; posterior::Float64 = 0.0) = - (m-sigma) * ( log(beta + posterior + u) - log(beta + posterior) )
 
@@ -155,10 +155,10 @@ function jumps_measure(logheight::Float64, beta::Float64, sigma::Float64; poster
     end
 
     if logheight < -500.0   # asymptotic behaviour
-        return exp( - sigma * logheight ) / ( sigma * gamma(1-sigma) )
+        return exp( - sigma * logheight ) / ( sigma * gamma(1.0-sigma) )
     end
 
-    return (beta + posterior)^sigma * gamma( - sigma, (beta + posterior) * exp(logheight) ) / gamma(1-sigma)
+    return (beta + posterior)^sigma * gamma( - sigma, (beta + posterior) * exp(logheight) ) / gamma(1.0-sigma)
 
 end # jumps_measure
 
@@ -179,9 +179,9 @@ function jumps_measure_grad(logheight::Float64, beta::Float64, sigma::Float64; p
     end
 
     if logheight < -500.0   # asymptotic behaviour
-        return - exp( - sigma * logheight ) / gamma(1-sigma)
+        return - exp( - sigma * logheight ) / gamma(1.0-sigma)
     end
 
-    return - exp( - sigma * logheight - (beta + posterior) * exp(logheight) ) / gamma(1-sigma)
+    return - exp( - sigma * logheight - (beta + posterior) * exp(logheight) ) / gamma(1.0-sigma)
 
 end # jumps_measure_grad

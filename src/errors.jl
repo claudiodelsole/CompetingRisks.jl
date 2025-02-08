@@ -1,11 +1,11 @@
 # export functions
-export survival_error, incidence_error, survival_errorplot, incidence_errorplot
+export survival_error, incidence_error, cumincidence_error, survival_errorplot, incidence_errorplot
 
 """
-    survival_error(times::Vector{Float64}, survival_post::Vector{Float64}, survival_true::Vector{Float64}, density_true::Vector{Float64})
+    survival_error(survival_post::Vector{Float64}, survival_true::Vector{Float64})
     
 """
-function survival_error(times::Vector{Float64}, survival_post::Vector{Float64}, survival_true::Vector{Float64}, density_true::Vector{Float64})
+function survival_error(survival_post::Vector{Float64}, survival_true::Vector{Float64})
 
     # survival posterior estimate absolute error
     error_post = abs.(survival_post - survival_true)
@@ -13,18 +13,15 @@ function survival_error(times::Vector{Float64}, survival_post::Vector{Float64}, 
     # maximum error
     max_error = maximum(error_post)
 
-    # integrated error
-    int_error = integrate_trapz(density_true .* error_post, times)
-
-    return (max_error, int_error)
+    return max_error
 
 end # survival_error
 
 """
-    incidence_error(times::Vector{Float64}, incidence_post::Matrix{Float64}, incidence_true::Matrix{Float64})
+    incidence_error(incidence_post::Matrix{Float64}, incidence_true::Matrix{Float64}, times::Vector{Float64})
 
 """
-function incidence_error(times::Vector{Float64}, incidence_post::Matrix{Float64}, incidence_true::Matrix{Float64})
+function incidence_error(incidence_post::Matrix{Float64}, incidence_true::Matrix{Float64}, times::Vector{Float64})
 
     # number of diseases
     diseases = 1:size(incidence_true, 2)
@@ -43,13 +40,10 @@ function incidence_error(times::Vector{Float64}, incidence_post::Matrix{Float64}
 end # incidence_error
 
 """
-    incidence_error(times::Vector{Float64}, cumincidence_post::Matrix{Float64}, cumincidence_true::Matrix{Float64}, incidence_true::Matrix{Float64})
+    cumincidence_error(cumincidence_post::Matrix{Float64}, cumincidence_true::Matrix{Float64})
 
 """
-function incidence_error(times::Vector{Float64}, cumincidence_post::Matrix{Float64}, cumincidence_true::Matrix{Float64}, incidence_true::Matrix{Float64})
-
-    # number of diseases
-    diseases = 1:size(cumincidence_true, 2)
+function cumincidence_error(cumincidence_post::Matrix{Float64}, cumincidence_true::Matrix{Float64})
 
     # true proportions
     props = cumincidence_true[end,:]
@@ -60,12 +54,9 @@ function incidence_error(times::Vector{Float64}, cumincidence_post::Matrix{Float
     # maximum rescaled error
     max_error = vec(maximum(error_post, dims = 1)) ./ props
 
-    # integrated weighted rescaled error
-    int_error = [integrate_trapz(incidence_true[:,d] .* error_post[:,d], times) / props[d]^2 for d in diseases]
+    return max_error
 
-    return (max_error, int_error)
-
-end # incidence_error
+end # cumincidence_error
 
 """
     survival_errorplot(times::Vector{Float64}, survival_post::Vector{Float64}, survival_true::Vector{Float64}, density_true::Vector{Float64};
@@ -105,24 +96,19 @@ function survival_errorplot(times::Vector{Float64}, survival_post::Vector{Float6
     end
 
     # compute errors
-    (max_error, int_error) = survival_error(times, survival_post, survival_true, density_true)
+    max_error = survival_error(survival_post, survival_true)
 
     # print posterior error
-    println("--- Posterior survival function errors ---")
-    println("Maximum error: ", string(max_error))
-    println("Integrated error: ", string(int_error))
+    println("--- Survival function errors ---")
+    println("BNP: ", string(max_error))
 
     if !isnothing(kaplan_meier)
 
         # compute errors
-        (max_error, int_error) = survival_error(times, kaplan_meier, survival_true, density_true)
+        max_error = survival_error(kaplan_meier, survival_true)
 
         # print frequentist error
-        println()
-        println("--- Kaplan-Meier survival function errors ---")
-        println("Maximum error: ", string(max_error))
-        println("Integrated error: ", string(int_error))
-        println()
+        println("freq: ", string(max_error))
 
     end
 
@@ -132,12 +118,14 @@ end # survival_error_plot
 
 """
     incidence_errorplot(times::Vector{Float64}, incidence_post::Matrix{Float64}, incidence_true::Matrix{Float64};
-            diseases::Union{Vector{Int64},Nothing} = nothing,
+            cum::Bool = false, diseases::Union{Vector{Int64},Nothing} = nothing,
+            aalen_johansen::Union{Matrix{Float64},Nothing} = nothing,
             lower::Union{Matrix{Float64},Nothing} = nothing, upper::Union{Matrix{Float64},Nothing} = nothing)
 
 """
 function incidence_errorplot(times::Vector{Float64}, incidence_post::Matrix{Float64}, incidence_true::Matrix{Float64};
-        diseases::Union{Vector{Int64},Nothing} = nothing,
+        cum::Bool = false, diseases::Union{Vector{Int64},Nothing} = nothing,
+        aalen_johansen::Union{Matrix{Float64},Nothing} = nothing,
         lower::Union{Matrix{Float64},Nothing} = nothing, upper::Union{Matrix{Float64},Nothing} = nothing)
 
     # number of diseases
@@ -146,14 +134,22 @@ function incidence_errorplot(times::Vector{Float64}, incidence_post::Matrix{Floa
     end
 
     # true proportions
-    props = [integrate_trapz(incidence_true[:,d], times) for d in diseases]
+    if cum == false     # incidence estimates
+        props = [integrate_trapz(incidence_true[:,d], times) for d in diseases]
+    else    # cumulative incidence estimates
+        props = incidence_true[end,:]
+    end
 
     # labels and colors
     mycolors = reshape([d for d in diseases], 1, :)
     mylabels = reshape(["cause " * string(d) for d in diseases], 1, :)
 
     # initialize plot
-    pl = plot(title = "Incidence functions errors")
+    if cum == false     # incidence estimates
+        pl = plot(title = "Incidence functions errors")
+    else    # cumulative incidence estimates
+        pl = plot(title = "Cumulative incidence functions errors")
+    end
 
     # plot incidence posterior estimates error
     error_post = (incidence_post - incidence_true) ./ transpose(props)
@@ -162,6 +158,14 @@ function incidence_errorplot(times::Vector{Float64}, incidence_post::Matrix{Floa
     # plot true incidences
     hline!(pl, [0.0], linecolor = "black", linestyle = :dash, label = "true")
 
+    if cum == true && !isnothing(aalen_johansen)
+        
+        # plot Aalen-Johansen estimate error
+        error_freq = (aalen_johansen - incidence_true) ./ transpose(props)
+        plot!(pl, times, error_freq, linecolor = mycolors, linestyle = :dashdot, primary = false)
+
+    end
+
     # fill credible bands
     if !isnothing(lower) && !isnothing(upper)
         plot!(pl, times, (lower - incidence_true) ./ transpose(props), fillrange = (upper - incidence_true) ./ transpose(props), 
@@ -169,80 +173,32 @@ function incidence_errorplot(times::Vector{Float64}, incidence_post::Matrix{Floa
     end
 
     # compute errors
-    int_error = incidence_error(times, incidence_post, incidence_true)
-
-    # print error
-    println("--- Posterior incidence functions errors ---")
-    println("Integrated errors: ", string(int_error[diseases]))
-
-    return pl
-
-end # incidence_errorplot
-
-"""
-    incidence_errorplot(times::Vector{Float64}, cumincidence_post::Matrix{Float64}, cumincidence_true::Matrix{Float64}, incidence_true::Matrix{Float64};
-            aalen_johansen::Union{Matrix{Float64},Nothing} = nothing, diseases::Union{Vector{Int64},Nothing} = nothing,
-            lower::Union{Matrix{Float64},Nothing} = nothing, upper::Union{Matrix{Float64},Nothing} = nothing)
-
-"""
-function incidence_errorplot(times::Vector{Float64}, cumincidence_post::Matrix{Float64}, cumincidence_true::Matrix{Float64}, incidence_true::Matrix{Float64};
-        aalen_johansen::Union{Matrix{Float64},Nothing} = nothing, diseases::Union{Vector{Int64},Nothing} = nothing,
-        lower::Union{Matrix{Float64},Nothing} = nothing, upper::Union{Matrix{Float64},Nothing} = nothing)
-
-    # number of diseases
-    if isnothing(diseases)
-        diseases = 1:size(cumincidence_true, 2)
+    if cum == false     # incidence estimates
+        int_error = incidence_error(incidence_post, incidence_true, times)
+    else    # cumulative incidence estimates
+        max_error = cumincidence_error(incidence_post, incidence_true)
     end
 
-    # true proportions
-    props = cumincidence_true[end,:]
+    # print posterior error
+    if cum == false     # incidence estimates
 
-    # labels and colors
-    mycolors = reshape([d for d in diseases], 1, :)
-    mylabels = reshape(["cause " * string(d) for d in diseases], 1, :)
+        println("--- Incidence functions errors ---")
+        println("BNP: ", string(int_error[diseases]))
 
-    # initialize plot
-    pl = plot(title = "Cumulative incidence functions errors")
+    else    # cumulative incidence estimates
 
-    # plot cumincidence posterior estimates error
-    error_post = (cumincidence_post - cumincidence_true) ./ transpose(props)
-    plot!(pl, times, error_post, linecolor = mycolors, label = mylabels)
+        println("--- Cumulative incidence functions errors ---")
+        println("BNP: ", string(max_error[diseases]))
 
-    # plot true incidences
-    hline!(pl, [0.0], linecolor = "black", linestyle = :dash, label = "true")
+        if !isnothing(aalen_johansen)
 
-    if !isnothing(aalen_johansen)
-        
-        # plot Aalen-Johansen estimate error
-        error_freq = (aalen_johansen - cumincidence_true) ./ transpose(props)
-        plot!(pl, times, error_freq, linecolor = mycolors, linestyle = :dashdot, primary = false)
-
-    end
-
-    # fill credible bands
-    if !isnothing(lower) && !isnothing(upper)
-        plot!(pl, times, (lower - cumincidence_true) ./ transpose(props), fillrange = (upper - cumincidence_true) ./ transpose(props), 
-                linecolor = mycolors, linealpha = 0.0, fillcolor = mycolors, fillalpha = 0.3, primary = false)
-    end
-
-    # compute errors
-    (max_error, int_error) = incidence_error(times, cumincidence_post, cumincidence_true, incidence_true)
-
-    # print error
-    println("--- Posterior cumulative incidence functions errors ---")
-    println("Maximum errors: ", string(max_error[diseases]))
-    println("Integrated errors: ", string(int_error[diseases]))
-
-    if !isnothing(aalen_johansen)
-
-        # compute errors
-        (max_error, int_error) = incidence_error(times, aalen_johansen, cumincidence_true, incidence_true)
-
-        # print error
-        println()
-        println("--- Aalen-Johansen cumulative incidence functions errors ---")
-        println("Maximum errors: ", string(max_error[diseases]))
-        println("Integrated errors: ", string(int_error[diseases]))
+            # compute errors
+            max_error = cumincidence_error(aalen_johansen, incidence_true)
+    
+            # print error
+            println("freq: ", string(max_error[diseases]))
+    
+        end
 
     end
 

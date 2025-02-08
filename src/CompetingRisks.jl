@@ -66,6 +66,7 @@ end # struct
 # functions and utilities
 include("model_functions.jl")
 include("utils.jl")
+include("constants.jl")
 
 """
     struct CoxModel
@@ -152,7 +153,7 @@ mutable struct RestaurantFranchise
     base_measure::Uniform
 
     # integration utility
-    legendre::LegendreIntegral      # quadrature nodes and weights
+    # legendre::LegendreIntegral      # quadrature nodes and weights
 
     # explicit constructor
     function RestaurantFranchise(crd::CompetingRisksDataset; theta::Float64 = 1.0, alpha::Float64 = 1.0, eta::Float64 = 1.0,
@@ -194,11 +195,11 @@ mutable struct RestaurantFranchise
         base_measure = Uniform(0.0, maximum(crd.T))
 
         # integration utility
-        legendre = LegendreIntegral()       # quadrature nodes and weights
+        # legendre = LegendreIntegral()       # quadrature nodes and weights
 
         # create RestaurantFranchise
         return new(N, D, crd.T, crd.Delta, CoxProd, X, Z, Xstar, n, r, q, table_dish, table_rest, KInt, mass_base, 
-            beta, sigma, beta0, sigma0, theta, alpha, eta, base_measure, legendre)
+            beta, sigma, beta0, sigma0, theta, alpha, eta, base_measure)
 
     end # RestaurantFranchise
 
@@ -248,7 +249,7 @@ mutable struct RestaurantArray
     base_measure::Uniform
 
     # integration utility
-    legendre::LegendreIntegral      # quadrature nodes and weights
+    # legendre::LegendreIntegral      # quadrature nodes and weights
 
     # explicit constructor
     function RestaurantArray(crd::CompetingRisksDataset; theta::Float64 = 1.0, alpha::Float64 = 1.0, eta::Float64 = 1.0, 
@@ -285,11 +286,11 @@ mutable struct RestaurantArray
         base_measure = Uniform(0.0, maximum(crd.T))
 
         # integration utility
-        legendre = LegendreIntegral()       # quadrature nodes and weights
+        # legendre = LegendreIntegral()       # quadrature nodes and weights
 
         # create RestaurantArray
         return new(N, D, crd.T, crd.Delta, CoxProd, X, Xstar, n, table_rest, KInt, mass_base, 
-            beta, sigma, theta, alpha, eta, base_measure, legendre)
+            beta, sigma, theta, alpha, eta, base_measure)
 
     end # RestaurantArray
 
