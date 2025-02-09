@@ -17,4 +17,4 @@ Random subsample of 400 patients extracted from the bone marrow transplant regis
 - *fm*: female donor to male recipient match;
 0 = no match, 1 = match.
 
-This dataset is part of the *crrSC* package in *R*, and can be loaded with *data(center)*
+This dataset is part of the *crrSC* package in *R*, and can be loaded with *data(center)*.
