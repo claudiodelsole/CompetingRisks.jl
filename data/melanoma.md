@@ -17,3 +17,5 @@ Survival data collected by [Drzewiecki et al. (1980)](https://pubmed.ncbi.nlm.ni
 - *thick*: tumour thickness (1/100 mm).
 
 - *sex*: 0 = female, 1 = male.
+
+This dataset is part of the *timereg* package in *R*, and can be loaded with *data(melanoma)*.
