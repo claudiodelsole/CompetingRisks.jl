@@ -1,124 +1,73 @@
 """
-    resample_dishes(rf::RestaurantFranchise)
+    resample_dishes(rf::Restaurants)
 
 """
-function resample_dishes(rf::RestaurantFranchise)
+function resample_dishes(rf::Restaurants)
 
-    # initialize acceptance counter
-    accept_dishes = 0.0
+    # acceptance counter
+    accept = 0.0
 
-    # relative standard deviation
-    mhdev = mhdev_dishes[]
+    # loop on dishes
+    for (dish, rdish) in enumerate(rf.r)
 
-    for (dish, rdish) in enumerate(rf.r)    # loop on dishes
-
-        if rdish == 0       # no tables at dish
-            continue
-        end
+        # no tables at dish
+        if rdish == 0 continue end
 
         # dish value
         dish_value = rf.Xstar[dish]
 
         # random walk step
-        eps = exp( mhdev * randn() )
+        eps = exp( stdev_dishes[] * randn() )
 
         # acceptance probability
-        accept_logprob = loglikelihood_dishes(dish, rdish, dish_value * eps, rf) + log(pdf(rf.base_measure, dish_value * eps)) + log(eps)
-        accept_logprob -= loglikelihood_dishes(dish, rdish, dish_value, rf) + log(pdf(rf.base_measure, dish_value))
-        accept_dishes += min(exp(accept_logprob), 1.0)
+        logprob = loglikelihood_dishes(dish, rdish, dish_value * eps, rf) + log(eps)
+        logprob -= loglikelihood_dishes(dish, rdish, dish_value, rf)
+        accept += min(exp(logprob), 1.0)
         
-        if log(rand()) < accept_logprob     # accept proposal
+        if log(rand()) < logprob    # accept proposal
 
             # update dish value
             rf.Xstar[dish] = dish_value * eps
 
             # update KernelInt for dish value
-            rf.KInt[dish] = KernelInt(dish_value * eps, rf.T, rf.eta)
+            rf.KInt[dish] = KernelInt(dish_value * eps, rf.T, rf.CoxProd, rf.kappa)
 
         end
 
     end
 
     # return acceptance probabilities
-    return accept_dishes
+    return accept
 
 end # resample_dishes
 
 """
-    resample_dishes(rf::RestaurantArray)
+    loglikelihood_dishes(dish::Int64, rdish::Int64, dish_value::Float64, rf::Restaurants)
 
 """
-function resample_dishes(rf::RestaurantArray)
+function loglikelihood_dishes(dish::Int64, rdish::Int64, dish_value::Float64, rf::Restaurants)
 
-    # initialize acceptance counter
-    accept_dishes = 0.0
-
-    # relative standard deviation
-    mhdev = mhdev_dishes[]
-
-    for (table, ntable) in enumerate(rf.n)    # loop on tables
-
-        if ntable == 0      # no customers at table
-            continue
-        end
-
-        # dish value
-        dish_value = rf.Xstar[table]
-
-        # random walk step
-        eps = exp( mhdev * randn() )
-
-        # acceptance probability
-        accept_logprob = loglikelihood_dishes(table, ntable, dish_value * eps, rf) + log(pdf(rf.base_measure, dish_value * eps)) + log(eps)
-        accept_logprob -= loglikelihood_dishes(table, ntable, dish_value, rf) + log(pdf(rf.base_measure, dish_value))
-        accept_dishes += min(exp(accept_logprob), 1.0)
-        
-        if log(rand()) < accept_logprob     # accept proposal
-
-            # update dish value
-            rf.Xstar[table] = dish_value * eps
-
-            # update KernelInt for dish value
-            rf.KInt[table] = KernelInt(dish_value * eps, rf.T, rf.eta)
-
-        end
-
-    end
-
-    # return acceptance probabilities
-    return accept_dishes
-
-end # resample_dishes
-
-"""
-    loglikelihood_dishes(dish::Int64, rdish::Int64, dish_value::Float64, rf::RestaurantFranchise)
-
-"""
-function loglikelihood_dishes(dish::Int64, rdish::Int64, dish_value::Float64, rf::RestaurantFranchise)
+    # precompute KernelInt
+    KInt = rf.alpha * KernelInt(dish_value, rf.T, rf.CoxProd, rf.kappa)
 
     # retrieve indices
     customers = (rf.X .== dish)         # customers eating dish
-    tables = (rf.table_dish .== dish)   # tables eating dish
 
-    if isnothing(rf.CoxProd)    # exchangeable model
+    # compute loglikelihood
+    loglik = sum(log.(rf.alpha * kernel.(dish_value, rf.T[customers], isnothing(rf.CoxProd) ? nothing : rf.CoxProd[customers], rf.kappa)))
 
-        # precompute KernelInt
-        KInt = rf.alpha * KernelInt(dish_value, rf.T, rf.eta)
-
-        # compute loglikelihood
-        loglik = sum(log.(rf.alpha * kernel.(dish_value, rf.T[customers], rf.eta)))
-        loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma))
-        loglik += logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
-
-    else    # regression model
-
-        # precompute KernelInt
-        KInt = rf.alpha * KernelInt(dish_value, rf.T, rf.CoxProd, rf.eta)
+    if rf.hierarchical     # restaurant franchise
+        
+        # retrieve indices
+        tables = (rf.table_dish .== dish)   # tables eating dish
 
         # compute loglikelihood
-        loglik = sum(log.(rf.alpha * kernel.(dish_value, rf.T[customers], rf.CoxProd[customers], rf.eta)))
-        loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma))
-        loglik += logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+        loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma)) + logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+
+    else    # restaurant array
+
+        # compute loglikelihood 
+        loglik += logtau(rdish, KInt, rf.beta, rf.sigma)
 
     end
 
@@ -127,194 +76,92 @@ function loglikelihood_dishes(dish::Int64, rdish::Int64, dish_value::Float64, rf
 end # loglikelihood_dishes
 
 """
-    loglikelihood_dishes(dish::Int64, ndish::Int64, dish_value::Float64, rf::RestaurantArray)
+    resample_theta(rf::Restaurants)
 
 """
-function loglikelihood_dishes(table::Int64, ntable::Int64, dish_value::Float64, rf::RestaurantArray)
-
-    # retrieve indices
-    customers = (rf.X .== table)         # customers eating dish
-
-    if isnothing(rf.CoxProd)    # exchangeable model
-
-        # compute loglikelihood
-        loglik = sum(log.(rf.alpha * kernel.(dish_value, rf.T[customers], rf.eta))) 
-        loglik += logtau(ntable, rf.alpha * KernelInt(dish_value, rf.T, rf.eta), rf.beta, rf.sigma)
+function resample_theta(rf::Restaurants)
     
-    else    # regression model
-
-        # compute loglikelihood
-        loglik = sum(log.(rf.alpha * kernel.(dish_value, rf.T[customers], rf.CoxProd[customers], rf.eta))) 
-        loglik += logtau(ntable, rf.alpha * KernelInt(dish_value, rf.T, rf.eta), rf.beta, rf.sigma)
-
-    end
-
-    return loglik
-
-end # loglikelihood_dishes
-
-"""
-    resample_theta(rf::RestaurantFranchise)
-
-"""
-function resample_theta(rf::RestaurantFranchise)
-
-    # number of dishes (with tables)
-    k = sum(rf.r .> 0)
-    
-    if isnothing(rf.CoxProd)    # exchangeable model
-
-        # integrand function
-        f(x::Float64) = psi(rf.D * psi(rf.alpha * KernelInt(x, rf.T, rf.eta), rf.beta, rf.sigma), rf.beta0, rf.sigma0) * pdf(rf.base_measure, x)
-
-        # compute integral
-        I = integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
-
-    else    # regression model
-
-        # integrand function
-        g(x::Float64) = psi(rf.D * psi(rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.eta), rf.beta, rf.sigma), rf.beta0, rf.sigma0) * pdf(rf.base_measure, x)
-
-        # compute integral
-        I = integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
-
+    # compute rate
+    if rf.hierarchical     # restaurant franchise
+        rate = integrate(x -> psi(rf.D * psi(rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.kappa), rf.beta, rf.sigma), rf.beta0, rf.sigma0), 0.0, maximum(rf.T))
+    else    # restaurant array
+        rate = integrate(x -> rf.D * psi(rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.kappa), rf.beta, rf.sigma), 0.0, maximum(rf.T))
     end
 
     # resample theta
-    rf.theta = rand(Gamma(1.0 + k, 1.0 / (0.1 + I)))
+    rf.theta = rand(Gamma(1.0 + count(rf.r .> 0))) / (0.1 + rate)
 
 end # resample theta
 
 """
-    resample_theta(rf::RestaurantArray)
+    resample_alpha(rf::Restaurants)
 
 """
-function resample_theta(rf::RestaurantArray)
-
-    # number of tables (with customers)
-    k = sum(rf.n .> 0)
-
-    if isnothing(rf.CoxProd)    # exchangeable model
-
-        # integrand function
-        f(x::Float64) = psi(rf.alpha * KernelInt(x, rf.T, rf.eta), rf.beta, rf.sigma) * pdf(rf.base_measure, x)
-
-        # compute integral
-        I = integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
-
-    else    # regression model
-
-        # integrand function
-        g(x::Float64) = psi(rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.eta), rf.beta, rf.sigma) * pdf(rf.base_measure, x)
-
-        # compute integral
-        I = integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
-
-    end
-
-    # resample theta
-    rf.theta = rand(Gamma(1.0 + k, 1.0 / (0.1 + rf.D * I)))
-
-end # resample theta
-
-"""
-    resample_alpha(rf::Union{RestaurantFranchise,RestaurantArray})
-
-"""
-function resample_alpha(rf::Union{RestaurantFranchise,RestaurantArray})
-
-    # resampling flag
-    flag = false
-
-    # relative standard deviation
-    mhdev = mhdev_alpha[]
+function resample_alpha(rf::Restaurants)
 
     # prior for alpha
     prior = Gamma(1.0, 10.0)
 
     # random walk step
-    eps = exp( mhdev * randn() )
+    eps = exp( stdev_alpha[] * randn() )
 
     # acceptance probability
-    accept_logprob = loglikelihood_alpha(rf.alpha * eps, rf) + log(pdf(prior, rf.alpha * eps)) + log(eps)
-    accept_logprob -= loglikelihood_alpha(rf.alpha, rf) + log(pdf(prior, rf.alpha))
-    accept_alpha = min(exp(accept_logprob), 1.0)
+    logprob = loglikelihood_alpha(rf.alpha * eps, rf) + log(pdf(prior, rf.alpha * eps)) + log(eps)
+    logprob -= loglikelihood_alpha(rf.alpha, rf) + log(pdf(prior, rf.alpha))
+    accept = min(exp(logprob), 1.0)
 
-    if log(rand()) < accept_logprob     # accept proposal
+    if (flag = log(rand()) < logprob)   # accept proposal
 
         # update alpha
         rf.alpha *= eps
 
-        # set flag
-        flag = true
-
     end
 
     # return acceptance probability
-    return (accept_alpha, flag)
+    return (accept, flag)
 
 end # resample_alpha
 
 """
-    loglikelihood_alpha(alpha::Float64, rf::RestaurantFranchise)
+    loglikelihood_alpha(alpha::Float64, rf::Restaurants)
 
 """
-function loglikelihood_alpha(alpha::Float64, rf::RestaurantFranchise)
+function loglikelihood_alpha(alpha::Float64, rf::Restaurants)
 
     # initialize loglikelihood
-    loglik = sum(rf.Delta .!= 0) * log(alpha)
+    loglik = count(rf.Delta .!= 0) * log(alpha)
 
     # loop on dishes
     for (dish, rdish) in enumerate(rf.r)
 
-        if rdish == 0       # no tables at dish
-            continue
-        end
-
-        # retrieve indices
-        tables = (rf.table_dish .== dish)   # tables eating dish
+        # no tables at dish
+        if rdish == 0 continue end
 
         # precompute KernelInt
         KInt = alpha * rf.KInt[dish]
 
-        # compute loglikelihood
-        loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma))
-        loglik += logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+        if rf.hierarchical     # restaurant franchise
+
+            # retrieve indices
+            tables = (rf.table_dish .== dish)   # tables eating dish
+
+            # compute loglikelihood
+            loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma)) + logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+
+        else    # restaurant array
+
+            # compute loglikelihood
+            loglik += logtau(rdish, KInt, rf.beta, rf.sigma)
+
+        end
 
     end
 
-    if isnothing(rf.CoxProd)    # exchangeable model
-
-        # integrand function
-        function f(x::Float64) 
-
-            # precompute KernelInt
-            KInt = alpha * KernelInt(x, rf.T, rf.eta)
-            
-            # compute integrand
-            return psi(rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0) * pdf(rf.base_measure, x)
-
-        end
-
-        # compute loglikelihood
-        loglik -= rf.theta * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
-
-    else    # regression model
-
-        # integrand function
-        function g(x::Float64) 
-
-            # precompute KernelInt
-            KInt = alpha * KernelInt(x, rf.T, rf.CoxProd, rf.eta)
-            
-            # compute integrand
-            return psi(rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0) * pdf(rf.base_measure, x)
-
-        end
-
-        # compute loglikelihood
-        loglik -= rf.theta * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
-
+    # compute loglikelihood
+    if rf.hierarchical     # restaurant franchise
+        loglik -= rf.theta * integrate(x -> psi(rf.D * psi(alpha * KernelInt(x, rf.T, rf.CoxProd, rf.kappa), rf.beta, rf.sigma), rf.beta0, rf.sigma0), 0.0, maximum(rf.T))
+    else    # restaurant array
+        loglik -= rf.theta * integrate(x -> rf.D * psi(alpha * KernelInt(x, rf.T, rf.CoxProd, rf.kappa), rf.beta, rf.sigma), 0.0, maximum(rf.T))
     end
 
     return loglik
@@ -322,126 +169,44 @@ function loglikelihood_alpha(alpha::Float64, rf::RestaurantFranchise)
 end # loglikelihood_alpha
 
 """
-    loglikelihood_alpha(alpha::Float64, rf::RestaurantArray)
+    resample_kappa(rf::Restaurants)
 
 """
-function loglikelihood_alpha(alpha::Float64, rf::RestaurantArray)
-
-    # initialize loglikelihood
-    loglik = sum(rf.Delta .!= 0) * log(alpha)
-
-    # loop on dishes
-    for (table, ntable) in enumerate(rf.n)
-
-        if ntable == 0      # no customers at table
-            continue
-        end
-
-        # precompute KernelInt
-        KInt = alpha * rf.KInt[table]
-
-        # compute loglikelihood
-        loglik += logtau(ntable, KInt, rf.beta, rf.sigma)
-
-    end
-
-    if isnothing(rf.CoxProd)    # exchangeable model
-
-        # integrand function
-        function f(x::Float64) 
-
-            # precompute KernelInt
-            KInt = alpha * KernelInt(x, rf.T, rf.eta)
-            
-            # compute integrand
-            return psi(KInt, rf.beta, rf.sigma) * pdf(rf.base_measure, x)
-
-        end
-
-        # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
-
-    else    # regression model
-
-        # integrand function
-        function g(x::Float64) 
-
-            # precompute KernelInt
-            KInt = alpha * KernelInt(x, rf.T, rf.CoxProd, rf.eta)
-            
-            # compute integrand
-            return psi(KInt, rf.beta, rf.sigma) * pdf(rf.base_measure, x)
-
-        end
-
-        # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
-
-    end
-
-    return loglik
-
-end # loglikelihood_alpha
-
-"""
-    resample_eta(rf::Union{RestaurantFranchise,RestaurantArray})
-
-"""
-function resample_eta(rf::Union{RestaurantFranchise,RestaurantArray})
-
-    # resampling flag
-    flag = false
-
-    # relative standard deviation
-    mhdev = mhdev_eta[]
+function resample_kappa(rf::Restaurants)
 
     # prior for eta
     prior = Gamma(1.0, 10.0)
 
     # random walk step
-    eps = exp( mhdev * randn() )
+    eps = exp( stdev_kappa[] * randn() )
 
     # acceptance probability
-    accept_logprob = loglikelihood_eta(rf.eta * eps, rf) + log(pdf(prior, rf.eta * eps)) + log(eps)
-    accept_logprob -= loglikelihood_eta(rf.eta, rf) + log(pdf(prior, rf.eta))
-    accept_eta = min(exp(accept_logprob), 1.0)
+    logprob = loglikelihood_kappa(rf.kappa * eps, rf) + log(pdf(prior, rf.kappa * eps)) + log(eps)
+    logprob -= loglikelihood_kappa(rf.kappa, rf) + log(pdf(prior, rf.kappa))
+    accept = min(exp(logprob), 1.0)
 
-    if log(rand()) < accept_logprob     # accept proposal
+    if (flag = log(rand()) < logprob)   # accept proposal
 
         # update eta
-        rf.eta *= eps
+        rf.kappa *= eps
 
-        if isnothing(rf.CoxProd)    # exchangeable model
-
-            # update KernelInt for dish values
-            for (dish, dish_value) in enumerate(rf.Xstar)
-                rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.eta)
-            end
-
-        else    # regression model
-
-            # update KernelInt for dish values
-            for (dish, dish_value) in enumerate(rf.Xstar)
-                rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.CoxProd, rf.eta)
-            end
-
+        # update KernelInt for dish values
+        for (dish, dish_value) in enumerate(rf.Xstar)
+            rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.CoxProd, rf.kappa)
         end
-
-        # set flag
-        flag = true
 
     end
 
     # return acceptance probability
-    return (accept_eta, flag)
+    return (accept, flag)
 
-end # resample_eta
-
-"""
-    loglikelihood_eta(eta::Float64, rf::RestaurantFranchise)
+end # resample_kappa
 
 """
-function loglikelihood_eta(eta::Float64, rf::RestaurantFranchise)
+    loglikelihood_kappa(kappa::Float64, rf::Restaurants)
+
+"""
+function loglikelihood_kappa(kappa::Float64, rf::Restaurants)
 
     # initialize loglikelihood
     loglik = 0.0
@@ -449,169 +214,57 @@ function loglikelihood_eta(eta::Float64, rf::RestaurantFranchise)
     # loop on dishes
     for (dish, rdish) in enumerate(rf.r)
 
-        if rdish == 0       # no tables at dish
-            continue
-        end
+        # no tables at dish
+        if rdish == 0 continue end
 
         # retrieve indices
         customers = (rf.X .== dish)         # customers eating dish
-        tables = (rf.table_dish .== dish)   # tables eating dish
 
         # retrieve dish value
         dish_value = rf.Xstar[dish]
 
-        if isnothing(rf.CoxProd)    # exchangeable model
+        # precompute KernelInt
+        KInt = rf.alpha * KernelInt(dish_value, rf.T, rf.CoxProd, kappa)
 
-            # precompute KernelInt
-            KInt = rf.alpha * KernelInt(dish_value, rf.T, eta)
+        # compute loglikelihood
+        loglik += sum(log.(kernel.(dish_value, rf.T[customers], isnothing(rf.CoxProd) ? nothing : rf.CoxProd[customers], kappa)))
 
-            # compute loglikelihood
-            loglik += sum(log.(kernel.(dish_value, rf.T[customers], eta)))
-            loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma))
-            loglik += logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+        if rf.hierarchical     # restaurant franchise
 
-        else    # regression model
-
-            # precompute KernelInt
-            KInt = rf.alpha * KernelInt(dish_value, rf.T, rf.CoxProd, eta)
+            # retrieve indices
+            tables = (rf.table_dish .== dish)   # tables eating dish
 
             # compute loglikelihood
-            loglik += sum(log.(kernel.(dish_value, rf.T[customers], rf.CoxProd[customers], eta)))
-            loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma))
-            loglik += logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+            loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma)) + logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+
+        else    # restaurant array
+
+            # compute loglikelihood
+            loglik += logtau(rdish, KInt, rf.beta, rf.sigma)
 
         end
 
     end
 
-    if isnothing(rf.CoxProd)    # exchangeable model
-
-        # integrand function
-        function f(x::Float64) 
-
-            # precompute KernelInt
-            KInt = rf.alpha * KernelInt(x, rf.T, eta)
-            
-            # compute integrand
-            return psi(rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0) * pdf(rf.base_measure, x)
-
-        end
-
-        # compute loglikelihood
-        loglik -= rf.theta * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
-
-    else    # regression model
-
-        # integrand function
-        function g(x::Float64) 
-
-            # precompute KernelInt
-            KInt = rf.alpha * KernelInt(x, rf.T, rf.CoxProd, eta)
-            
-            # compute integrand
-            return psi(rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0) * pdf(rf.base_measure, x)
-
-        end
-
-        # compute loglikelihood
-        loglik -= rf.theta * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
-
+    # compute loglikelihood
+    if rf.hierarchical     # restaurant franchise
+        loglik -= rf.theta * integrate(x -> psi(rf.D * psi(rf.alpha * KernelInt(x, rf.T, rf.CoxProd, kappa), rf.beta, rf.sigma), rf.beta0, rf.sigma0), 0.0, maximum(rf.T))
+    else    # restaurant array
+        loglik -= rf.theta * integrate(x -> rf.D * psi(rf.alpha * KernelInt(x, rf.T, rf.CoxProd, kappa), rf.beta, rf.sigma), 0.0, maximum(rf.T))
     end
 
     return loglik
 
-end # loglikelihood_eta
+end # loglikelihood_kappa
 
 """
-    loglikelihood_eta(eta::Float64, rf::RestaurantArray)
+    resample_coefficients(rf::Restaurants, cm::CoxModel)
 
 """
-function loglikelihood_eta(eta::Float64, rf::RestaurantArray)
+function resample_coefficients(rf::Restaurants, cm::CoxModel)
 
-    # initialize loglikelihood
-    loglik = 0.0
-
-    # loop on dishes
-    for (table, ntable) in enumerate(rf.n)
-
-        if ntable == 0      # no customers at table
-            continue
-        end
-
-        # retrieve indices
-        customers = (rf.X .== table)         # customers seated at table
-
-        # retrieve dish value
-        dish_value = rf.Xstar[table]
-
-        if isnothing(rf.CoxProd)    # exchangeable model
-
-            # precompute KernelInt
-            KInt = rf.alpha * KernelInt(dish_value, rf.T, eta)
-
-            # compute loglikelihood
-            loglik += sum(log.(kernel.(dish_value, rf.T[customers], eta)))
-            loglik += logtau(ntable, KInt, rf.beta, rf.sigma)
-
-        else    # regression model
-
-            # precompute KernelInt
-            KInt = rf.alpha * KernelInt(dish_value, rf.T, rf.CoxProd, eta)
-
-            # compute loglikelihood
-            loglik += sum(log.(kernel.(dish_value, rf.T[customers], rf.CoxProd[customers], eta)))
-            loglik += logtau(ntable, KInt, rf.beta, rf.sigma)
-
-        end
-
-    end
-
-    if isnothing(rf.CoxProd)    # exchangeable model
-
-        # integrand function
-        function f(x::Float64) 
-
-            # precompute KernelInt
-            KInt = rf.alpha * KernelInt(x, rf.T, eta)
-            
-            # compute integrand
-            return psi(KInt, rf.beta, rf.sigma) * pdf(rf.base_measure, x)
-
-        end
-
-        # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
-
-    else    # regression model
-
-        # integrand function
-        function g(x::Float64) 
-
-            # precompute KernelInt
-            KInt = rf.alpha * KernelInt(x, rf.T, rf.CoxProd, eta)
-            
-            # compute integrand
-            return psi(KInt, rf.beta, rf.sigma) * pdf(rf.base_measure, x)
-
-        end
-
-        # compute loglikelihood
-        loglik -= rf.theta * rf.D * integrate(g, legendre; lower = 0.0, upper = maximum(rf.T))
-
-    end
-
-    return loglik
-
-end # loglikelihood_eta
-
-"""
-    resample_coefficients(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel)
-
-"""
-function resample_coefficients(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel)
-
-    # initialize acceptance
-    accept_coeffs = zeros(Float64, cm.L)
+    # acceptance counter
+    accept = zeros(Float64, cm.L)
 
     # resampling flag
     flag = false
@@ -619,42 +272,34 @@ function resample_coefficients(rf::Union{RestaurantFranchise,RestaurantArray}, c
     # prior for coefficients
     prior = Normal(0.0, 10.0)
 
-    # standard deviation
-    mhdev = mhdev_coefficients[]
-
     # initialize proposed exponential CoxProducts
     CoxProd = ones(Float64, rf.N)
 
-    for (l, coeff) in enumerate(cm.xi)      # loop on coefficients
+    # loop on coefficients
+    for (l, coeff) in enumerate(cm.eta)
+
+        # retrieve indices
+        customers = (cm.predictors .== l)
 
         # random walk step
-        eps = mhdev * randn()
+        eps = stdev_coefficients[] * randn()
 
-        # compute proposed exponential CoxProducts
-        for (cust, predictor) in enumerate(cm.predictors)
-            if predictor == l
-                CoxProd[cust] = exp(coeff + eps)
-            else
-                CoxProd[cust] = rf.CoxProd[cust]
-            end
-        end
+        # proposed exponential CoxProducts
+        CoxProd[:] = rf.CoxProd[:]
+        CoxProd[customers] .= exp(coeff + eps)
 
         # acceptance probability
-        accept_logprob = loglikelihood_coeffs(CoxProd, rf) + log(pdf(prior, coeff + eps))
-        accept_logprob -= loglikelihood_coeffs(rf.CoxProd, rf) + log(pdf(prior, coeff))
-        accept_coeffs[l] = min(exp(accept_logprob), 1.0)
+        logprob = loglikelihood_coeffs(CoxProd, rf) + log(pdf(prior, coeff + eps))
+        logprob -= loglikelihood_coeffs(rf.CoxProd, rf) + log(pdf(prior, coeff))
+        accept[l] = min(exp(logprob), 1.0)
         
-        if log(rand()) < accept_logprob     # accept proposal
+        if log(rand()) < logprob    # accept proposal
 
             # update coefficient value
-            cm.xi[l] += eps
+            cm.eta[l] += eps
 
             # update exponential CoxProduct for observations
-            for (cust, predictor) in enumerate(cm.predictors)
-                if predictor == l
-                    rf.CoxProd[cust] = CoxProd[cust]
-                end
-            end
+            rf.CoxProd[customers] .= exp(coeff + eps)
 
             # set flag
             flag = true
@@ -665,19 +310,19 @@ function resample_coefficients(rf::Union{RestaurantFranchise,RestaurantArray}, c
 
     # update KernelInt for dish values
     for (dish, dish_value) in enumerate(rf.Xstar)
-        rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.CoxProd, rf.eta)
+        rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.CoxProd, rf.kappa)
     end
 
     # return acceptance probabilities
-    return (accept_coeffs, flag)
+    return (accept, flag)
 
 end
 
 """
-    loglikelihood_coeffs(CoxProd::Vector{Float64}, rf::RestaurantFranchise)
+    loglikelihood_coeffs(CoxProd::Vector{Float64}, rf::Restaurants)
 
 """
-function loglikelihood_coeffs(CoxProd::Vector{Float64}, rf::RestaurantFranchise)
+function loglikelihood_coeffs(CoxProd::Vector{Float64}, rf::Restaurants)
 
     # initialize loglikelihood
     loglik = 0.0
@@ -685,80 +330,44 @@ function loglikelihood_coeffs(CoxProd::Vector{Float64}, rf::RestaurantFranchise)
     # loop on dishes
     for (dish, rdish) in enumerate(rf.r)
 
-        if rdish == 0       # no tables at dish
-            continue
-        end
+        # no tables at dish
+        if rdish == 0 continue end
 
         # retrieve indices
         customers = (rf.X .== dish)         # customers eating dish
-        tables = (rf.table_dish .== dish)   # tables eating dish
 
         # retrieve dish value
         dish_value = rf.Xstar[dish]
 
         # precompute KernelInt
-        KInt = rf.alpha * KernelInt(dish_value, rf.T, CoxProd, rf.eta)
+        KInt = rf.alpha * KernelInt(dish_value, rf.T, CoxProd, rf.kappa)
 
         # compute loglikelihood
-        loglik += sum(log.(rf.alpha * kernel.(dish_value, rf.T[customers], CoxProd[customers], rf.eta)))
-        loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma))
-        loglik += logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+        loglik += sum(log.(kernel.(dish_value, rf.T[customers], CoxProd[customers], rf.kappa)))
 
-    end
+        if rf.hierarchical     # restaurant franchise
 
-    # integrand function
-    function f(x::Float64)
-            
-        # compute integrand
-        return psi(rf.D * psi(rf.alpha * KernelInt(x, rf.T, CoxProd, rf.eta), rf.beta, rf.sigma), rf.beta0, rf.sigma0) * pdf(rf.base_measure, x)
+            # retrieve indices
+            tables = (rf.table_dish .== dish)   # tables eating dish
 
-    end
+            # compute loglikelihood
+            loglik += sum(logtau.(rf.q[tables], KInt, rf.beta, rf.sigma)) + logtau(rdish, rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
 
-    # compute loglikelihood
-    loglik -= rf.theta * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
+        else    # restaurant array
 
-    return loglik
+            # compute loglikelihood
+            loglik += logtau(rdish, KInt, rf.beta, rf.sigma)
 
-end # loglikelihood_coeffs
-
-"""
-    loglikelihood_coeffs(CoxProd::Vector{Float64}, rf::RestaurantArray)
-
-"""
-function loglikelihood_coeffs(CoxProd::Vector{Float64}, rf::RestaurantArray)
-
-    # initialize loglikelihood
-    loglik = 0.0
-
-    # loop on tables
-    for (table, ntable) in enumerate(rf.n)
-
-        if ntable == 0      # no customers at dish
-            continue
         end
 
-        # retrieve indices
-        customers = (rf.X .== table)         # customers seated at table
-
-        # retrieve dish value
-        dish_value = rf.Xstar[table]
-
-        # compute loglikelihood
-        loglik += sum(log.(rf.alpha * kernel.(dish_value, rf.T[customers], CoxProd[customers], rf.eta)))
-        loglik += logtau(ntable, rf.alpha * KernelInt(dish_value, rf.T, CoxProd, rf.eta), rf.beta, rf.sigma)
-
-    end
-
-    # integrand function
-    function f(x::Float64)
-            
-        # compute integrand
-        return psi(rf.alpha * KernelInt(x, rf.T, CoxProd, rf.eta), rf.beta, rf.sigma) * pdf(rf.base_measure, x)
-
     end
 
     # compute loglikelihood
-    loglik -= rf.theta * rf.D * integrate(f, legendre; lower = 0.0, upper = maximum(rf.T))
+    if rf.hierarchical     # restaurant franchise
+        loglik -= rf.theta * integrate(x -> psi(rf.D * psi(rf.alpha * KernelInt(x, rf.T, CoxProd, rf.kappa), rf.beta, rf.sigma), rf.beta0, rf.sigma0), 0.0, maximum(rf.T))
+    else    # restaurant array
+        loglik -= rf.theta * integrate(x -> rf.D * psi(rf.alpha * KernelInt(x, rf.T, CoxProd, rf.kappa), rf.beta, rf.sigma), 0.0, maximum(rf.T))
+    end
 
     return loglik
 

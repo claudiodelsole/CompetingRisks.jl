@@ -1,6 +1,6 @@
 ## Multicenter Bone Marrow Transplantation Data
 
-Random subsample of 400 patients extracted from the bone marrow transplant registry of the European Blood and Marrow Transplant (EBMT) Group.
+Random subsample of 400 patients extracted from the bone marrow transplant registry of the European Blood and Marrow Transplant (EBMT) Group
 
 **Variables**
 
@@ -16,5 +16,3 @@ Random subsample of 400 patients extracted from the bone marrow transplant regis
 
 - *fm*: female donor to male recipient match;
 0 = no match, 1 = match.
-
-This dataset is part of the *crrSC* package in *R*, and can be loaded with *data(center)*.

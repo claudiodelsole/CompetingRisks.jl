@@ -1,75 +1,70 @@
 # export functions
-export Gibbs
+export posterior_sampling
 
 """
-    Gibbs(rf::Union{RestaurantFranchise,RestaurantArray}, marginal_estimators::Vector{TypeM}, conditional_estimators::Vector{TypeC}, 
-            num_samples::@NamedTuple{n::Int64, m::Int64}; 
-            thin::Int64 = 10, burn_in::Int64 = 0, started::Bool = false) where {TypeM <: MarginalEstimator, TypeC <: ConditionalEstimator}
+    posterior_sampling(rf::Restaurants, cm::Union{CoxModel,Nothing}, nsamples::Int64; times::Vector{Float64} = collect(range(0.0, maximum(rf.T), 200)), thin::Int64 = 10, burn_in::Int64 = 1000, nsamples_crms::Int64 = 1, Tmax::Float64 = maximum(times), started::Bool = false)
 
 """
-function Gibbs(rf::Union{RestaurantFranchise,RestaurantArray}, marginal_estimators::Vector{TypeM}, conditional_estimators::Vector{TypeC}, 
-        num_samples::@NamedTuple{n::Int64, m::Int64}; 
-        thin::Int64 = 10, burn_in::Int64 = 0, started::Bool = false) where {TypeM <: MarginalEstimator, TypeC <: ConditionalEstimator}
+function posterior_sampling(rf::Restaurants, cm::Union{CoxModel,Nothing}, nsamples::Int64; times::Vector{Float64} = collect(range(0.0, maximum(rf.T), 200)), thin::Int64 = 10, burn_in::Int64 = 1000, nsamples_crms::Int64 = 1, Tmax::Float64 = maximum(times), started::Bool = false)
 
-    # create Diagnostics
-    dgn = Diagnostics(burn_in)
+    # initialize estimators
+    marginal_estimator, conditional_estimator = Estimator(rf, cm, times), Estimator(rf, cm, times)
+    
+    # initialize Parameters
+    params = Parameters()
 
     # initialize latent variables
     if started == false
-        Gibbs_initialize(rf)
+        initialize(rf, cm)
     end
 
     # burn-in phase
-    @showprogress for _ in 1:burn_in
-        Gibbs_step(rf, dgn)
+    @showprogress for _ in range(1, burn_in)
+        gibbs_step(rf, cm, params)
     end
 
     # inference phase
-    @showprogress for _ in 1:num_samples.n
+    @showprogress for _ in range(1, nsamples)
 
         # run chain
-        for _ in 1:thin
-            Gibbs_step(rf, dgn)
+        for _ in range(1, thin)
+            gibbs_step(rf, cm, params)
         end
 
-        # inference
-        for est in marginal_estimators
-            append(est, rf)
-        end
+        # marginal inference
+        append(marginal_estimator, rf, isnothing(cm) ? nothing : pushfirst!(exp.(cm.eta), 1.0))
 
-        # posterior sampling
-        for _ in 1:num_samples.m
+        # conditional inference
+        for _ in range(1, nsamples_crms)
 
             # posterior sampling
-            CRMs = sample_measures(rf)
+            crms = sample_measures(rf, Tmax)
 
             # inference
-            for est in conditional_estimators
-                append(est, CRMs, rf)
-            end
+            append(conditional_estimator, crms, rf, isnothing(cm) ? nothing : pushfirst!(exp.(cm.eta), 1.0))
 
         end
 
     end
 
-    # return Diagnostics
-    return dgn
+    # return Parameters
+    return marginal_estimator, conditional_estimator, params
 
-end # Gibbs
-
-"""
-    Gibbs_initialize(rf::Union{RestaurantFranchise,RestaurantArray})
+end # posterior_sampling
 
 """
-function Gibbs_initialize(rf::Union{RestaurantFranchise,RestaurantArray})
+    initialize(rf::Restaurants, cm::Union{CoxModel,Nothing})
+
+"""
+function initialize(rf::Restaurants, cm::Union{CoxModel,Nothing})
 
     # precompute quantities
     precompute_mass_base(rf)
 
     # sample allocations
-    for (cust, disease) in enumerate(rf.Delta)
-        if disease != 0
-            sample_allocation_init(cust, rf)
+    for (obs, cause) in enumerate(rf.Delta)
+        if cause != 0
+            sample_allocation(obs, rf, init = true)
         end
     end
 
@@ -79,20 +74,23 @@ function Gibbs_initialize(rf::Union{RestaurantFranchise,RestaurantArray})
 
     # resampling hyperparameters
     resample_alpha(rf)
-    resample_eta(rf)
+    resample_kappa(rf)
 
-end # Gibbs_initialize
+    # resampling coefficients
+    if !isnothing(cm) resample_coefficients(rf, cm) end
+
+end # initialize
 
 """
-    Gibbs_step(rf::Union{RestaurantFranchise,RestaurantArray}, dgn::Diagnostics)
+    gibbs_step(rf::Restaurants, cm::Union{CoxModel,Nothing}, params::Parameters)
 
 """
-function Gibbs_step(rf::Union{RestaurantFranchise,RestaurantArray}, dgn::Diagnostics)
+function gibbs_step(rf::Restaurants, cm::Union{CoxModel,Nothing}, params::Parameters)
 
     # sample allocations
-    for (cust, disease) in enumerate(rf.Delta)
-        if disease != 0
-            sample_allocation(cust, rf)
+    for (obs, cause) in enumerate(rf.Delta)
+        if cause != 0
+            sample_allocation(obs, rf)
         end
     end
 
@@ -102,237 +100,147 @@ function Gibbs_step(rf::Union{RestaurantFranchise,RestaurantArray}, dgn::Diagnos
 
     # resampling hyperparameters
     (accept_alpha, flag_alpha) = resample_alpha(rf)
-    (accept_eta, flag_eta) = resample_eta(rf)
+    (accept_kappa, flag_kappa) = resample_kappa(rf)
+
+    # resampling coefficients
+    (accept_coeffs, flag_coeffs) = zeros(Float64, 1), false
+    if !isnothing(cm)
+        (accept_coeffs, flag_coeffs) = resample_coefficients(rf, cm)
+    end
 
     # precompute quantities
-    if (flag_alpha || flag_eta) precompute_mass_base(rf) end
+    if (flag_alpha || flag_kappa || flag_coeffs) precompute_mass_base(rf) end
 
-    # diagnostics
-    append(dgn, rf, accept_dishes, accept_alpha, accept_eta)
+    # Parameters
+    append(params, rf, cm, accept_dishes, accept_alpha, accept_kappa, accept_coeffs)
 
-end # Gibbs_step
-
-"""
-    precompute_mass_base(rf::Union{RestaurantFranchise,RestaurantArray})
+end # gibbs_step
 
 """
-function precompute_mass_base(rf::Union{RestaurantFranchise,RestaurantArray})
+    precompute_mass_base(rf::Restaurants)
 
-    if isnothing(rf.CoxProd)     # exchangeable model
+"""
+function precompute_mass_base(rf::Restaurants)
 
-        for (cust, disease) in enumerate(rf.Delta)
-            if disease != 0
-                rf.mass_base[cust] = mass_base(rf.T[cust], rf)
-            end
+    for (obs, cause) in enumerate(rf.Delta)
+        if cause != 0
+            rf.mass_base[obs] = mass_base(rf.T[obs], isnothing(rf.CoxProd) ? nothing : rf.CoxProd[obs], rf)
         end
-
-    else    # regression model
-
-        for (cust, disease) in enumerate(rf.Delta)
-            if disease != 0
-                rf.mass_base[cust] = mass_base(rf.T[cust], rf.CoxProd[cust], rf)
-            end
-        end
-
     end
 
 end # precompute_mass_base
 
 """
-    mass_base(time::Float64, rf::Union{RestaurantFranchise,RestaurantArray})
+    mass_base(time::Float64, cp::Union{Float64,Nothing}, rf::Restaurants)
 
 """
-function mass_base(time::Float64, rf::Union{RestaurantFranchise,RestaurantArray})
-
-    # integrand function
-    f(x::Float64) = likelihood_base(x, time, rf) * pdf(rf.base_measure, x)
+function mass_base(time::Float64, cp::Union{Float64,Nothing}, rf::Restaurants)
 
     # compute integral
-    return integrate(f, legendre; lower = 0.0, upper = time)
+    return integrate(x -> likelihood_base(x, time, cp, rf), 0.0, time)
 
 end # mass_base
 
 """
-    likelihood_base(x::Float64, time::Float64, rf::RestaurantFranchise)
+    likelihood_base(x::Float64, time::Float64, cp::Union{Float64,Nothing}, rf::Restaurants)
 
 """
-function likelihood_base(x::Float64, time::Float64, rf::RestaurantFranchise)
+function likelihood_base(x::Float64, time::Float64, cp::Union{Float64,Nothing}, rf::Restaurants)
 
-    # precompute KernelInt
-    KInt = rf.alpha * KernelInt(x, rf.T, rf.eta)
+    # compute KernelInt
+    KInt = rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.kappa)
+
+    # compute likelihood ratio
+    loglik = rf.alpha * kernel(x, time, cp, rf.kappa) * tau(KInt, rf.beta, rf.sigma)
+
+    # compute likelihood ratio
+    if rf.hierarchical      # restaurant franchise
+        loglik *= tau(rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+    end
         
     # compute likelihood ratio
-    return rf.alpha * kernel(x, time, rf.eta) * tau(KInt, rf.beta, rf.sigma) * tau(rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+    return loglik
 
 end # likelihood_base
 
 """
-    likelihood_base(x::Float64, time::Float64, rf::RestaurantArray)
+    sample_allocation(obs::Int64, rf::Restaurants; init::Bool = false)
 
 """
-function likelihood_base(x::Float64, time::Float64, rf::RestaurantArray)
-        
-    # compute likelihood ratio
-    return rf.alpha * kernel(x, time, rf.eta) * tau(rf.alpha * KernelInt(x, rf.T, rf.eta), rf.beta, rf.sigma)
+function sample_allocation(obs::Int64, rf::Restaurants; init::Bool = false)
 
-end # likelihood_base
+    # remove observation
+    if init == false
+        remove_observation(obs, rf)
+    end
 
-"""
-    sample_allocation_init(cust::Int64, rf::RestaurantFranchise)
-
-"""
-function sample_allocation_init(cust::Int64, rf::RestaurantFranchise)
-
-    # step 2: compute masses
-    (mass_tables, mass_dishes) = compute_mass(cust, rf)
+    # compute masses
+    (mass_tables, mass_dishes) = compute_mass(obs, rf)
     
-    # step 3: sample from probabilities
-    new_allocation(cust, mass_tables, mass_dishes, rf)
-
-end # sample_allocation_init
-
-"""
-    sample_allocation_init(cust::Int64, rf::RestaurantArray)
-
-"""
-function sample_allocation_init(cust::Int64, rf::RestaurantArray)
-
-    # step 2: compute masses
-    mass_tables = compute_mass(cust, rf)
-    
-    # step 3: sample from probabilities
-    new_allocation(cust, mass_tables, rf)
-
-end # sample_allocation_init
-
-"""
-    sample_allocation(cust::Int64, rf::RestaurantFranchise)
-
-"""
-function sample_allocation(cust::Int64, rf::RestaurantFranchise)
-
-    # step 1: remove customer
-    remove_customer(cust, rf)
-
-    # step 2: compute masses
-    (mass_tables, mass_dishes) = compute_mass(cust, rf)
-    
-    # step 3: sample from probabilities
-    new_allocation(cust, mass_tables, mass_dishes, rf)
+    # sample allocation
+    new_allocation(obs, mass_tables, mass_dishes, rf)
 
 end # sample_allocation
 
 """
-    sample_allocation(cust::Int64, rf::RestaurantArray)
+    remove_observation(obs::Int64, rf::Restaurants)
 
 """
-function sample_allocation(cust::Int64, rf::RestaurantArray)
-
-    # step 1: remove customer
-    remove_customer(cust, rf)
-
-    # step 2: compute masses
-    mass_tables = compute_mass(cust, rf)
-    
-    # step 3: sample from probabilities
-    new_allocation(cust, mass_tables, rf)
-
-end # sample_allocation
-
-"""
-    remove_customer(cust::Int64, rf::RestaurantFranchise)
-
-"""
-function remove_customer(cust::Int64, rf::RestaurantFranchise)
+function remove_observation(obs::Int64, rf::Restaurants)
 
     # retrieve customer data
-    dish, table = rf.X[cust], rf.Z[cust]
+    dish, table = rf.X[obs], rf.Z[obs]
 
     # update counts matrices
     rf.n[dish] -= 1         # customers per dish
     rf.q[table] -= 1        # customers per table
+    if !rf.hierarchical rf.r[table] -= 1 end # tables per dish
 
-    if rf.q[table] == 0     # no customers at table
-        rf.r[dish] -= 1             # tables per dish
+    # no customers at table
+    if rf.q[table] == 0
+        if rf.hierarchical rf.r[dish] -= 1 end  # tables per dish
         rf.table_dish[table] = 0    # no dish index per table
         rf.table_rest[table] = 0    # no rest index per table
     end
 
     # update latent variables
-    rf.X[cust] = 0      # customer dish
-    rf.Z[cust] = 0      # customer table
+    rf.X[obs] = 0      # customer dish
+    rf.Z[obs] = 0      # customer table
 
-end # remove_customer
-
-"""
-    remove_customer(cust::Int64, rf::RestaurantArray)
+end # remove_observation
 
 """
-function remove_customer(cust::Int64, rf::RestaurantArray)
+    compute_mass(obs::Int64, rf::Restaurants)
+
+"""
+function compute_mass(obs::Int64, rf::Restaurants)
 
     # retrieve customer data
-    table = rf.X[cust]
+    time, rest = rf.T[obs], rf.Delta[obs]
+    cp = (isnothing(rf.CoxProd) ? nothing : rf.CoxProd[obs])
 
-    # update counts matrices
-    rf.n[table] -= 1    # customers per table
+    # initialize vectors
+    mass_tables = zeros(length(rf.q)) 
+    mass_dishes = zeros(length(rf.r))
 
-    if rf.n[table] == 0     # no customers at table
-        rf.table_rest[table] = 0    # no rest index per table
+    ### sit at old table
+    
+    # loop on tables
+    for (table, qtable) in enumerate(rf.q)
+        if rf.table_rest[table] == rest         # table in restaurant
+            mass_tables[table] = mass_table(time, cp, table, qtable, rf)
+        end
     end
 
-    # update latent variables
-    rf.X[cust] = 0      # customer dish
+    if !rf.hierarchical     # restaurant array
+        return (mass_tables, mass_dishes)
+    end
 
-end # remove_customer
+    ### sit at new table, eating old dish
 
-"""
-    compute_mass(cust::Int64, rf::RestaurantFranchise)
-
-"""
-function compute_mass(cust::Int64, rf::RestaurantFranchise)
-
-    if isnothing(rf.CoxProd)     # exchangeable model
-
-        # retrieve customer data
-        time, rest = rf.T[cust], rf.Delta[cust]
-
-        # case 1: sit at old table
-        mass_tables = zeros(length(rf.q))       # initialize vector
-        
-        for (table, qtable) in enumerate(rf.q)  # loop on tables
-            if rf.table_rest[table] == rest         # table in restaurant
-                mass_tables[table] = mass_table(time, table, qtable, rf)
-            end
-        end
-
-        # case 2: sit at new table, eating old dish
-        mass_dishes = zeros(length(rf.r))       # initialize vector
-
-        for (dish, rdish) in enumerate(rf.r)    # loop on dishes
-            mass_dishes[dish] = mass_dish(time, dish, rdish, rf)
-        end
-
-    else    # regression model
-
-        # retrieve customer data
-        time, cp, rest = rf.T[cust], rf.CoxProd[cust], rf.Delta[cust]
-
-        # case 1: sit at old table
-        mass_tables = zeros(length(rf.q))       # initialize vector
-        
-        for (table, qtable) in enumerate(rf.q)  # loop on tables
-            if rf.table_rest[table] == rest         # table in restaurant
-                mass_tables[table] = mass_table(time, cp, table, qtable, rf)
-            end
-        end
-
-        # case 2: sit at new table, eating old dish
-        mass_dishes = zeros(length(rf.r))       # initialize vector
-
-        for (dish, rdish) in enumerate(rf.r)    # loop on dishes
-            mass_dishes[dish] = mass_dish(time, cp, dish, rdish, rf)
-        end
-
+    # loop on dishes
+    for (dish, rdish) in enumerate(rf.r)
+        mass_dishes[dish] = mass_dish(time, cp, dish, rdish, rf)
     end
 
     # return masses
@@ -341,53 +249,10 @@ function compute_mass(cust::Int64, rf::RestaurantFranchise)
 end # compute_mass
 
 """
-    compute_mass(cust::Int64, rf::RestaurantArray)
+    mass_table(time::Float64, cp::Union{Float64,Nothing}, table::Int64, qtable::Int64, rf::Restaurants)
 
 """
-function compute_mass(cust::Int64, rf::RestaurantArray)
-
-    if isnothing(rf.CoxProd)     # exchangeable model
-
-        # retrieve customer data
-        time, rest = rf.T[cust], rf.Delta[cust]
-
-        # initialize vector
-        mass_tables = zeros(length(rf.n))
-
-        # loop on tables
-        for (table, ntable) in enumerate(rf.n)
-            if rf.table_rest[table] == rest     # table in restaurant
-                mass_tables[table] = mass_table(time, table, ntable, rf)
-            end
-        end
-
-    else    # regression model
-
-        # retrieve customer data
-        time, cp, rest = rf.T[cust], rf.CoxProd[cust], rf.Delta[cust]
-
-        # initialize vector
-        mass_tables = zeros(length(rf.n))
-
-        # loop on tables
-        for (table, ntable) in enumerate(rf.n)
-            if rf.table_rest[table] == rest     # table in restaurant
-                mass_tables[table] = mass_table(time, cp, table, ntable, rf)
-            end
-        end
-
-    end
-
-    # return masses
-    return mass_tables
-
-end # compute_mass
-
-"""
-    mass_table(time::Float64, table::Int64, qtable::Int64, rf::RestaurantFranchise)
-
-"""
-function mass_table(time::Float64, table::Int64, qtable::Int64, rf::RestaurantFranchise)
+function mass_table(time::Float64, cp::Union{Float64,Nothing}, table::Int64, qtable::Int64, rf::Restaurants)
 
     # initialize mass
     mass = 0.0
@@ -399,7 +264,7 @@ function mass_table(time::Float64, table::Int64, qtable::Int64, rf::RestaurantFr
         dish_value = rf.Xstar[dish]
 
         # compute mass
-        mass = rf.alpha * kernel(dish_value, time, rf.eta) * tau_ratio(qtable, rf.alpha * rf.KInt[dish], rf.beta, rf.sigma)
+        mass = rf.alpha * kernel(dish_value, time, cp, rf.kappa) * tau_ratio(qtable, rf.alpha * rf.KInt[dish], rf.beta, rf.sigma)
 
     end
     
@@ -408,33 +273,10 @@ function mass_table(time::Float64, table::Int64, qtable::Int64, rf::RestaurantFr
 end # mass_table
 
 """
-    mass_table(time::Float64, table::Int64, ntable::Int64, rf::RestaurantArray)
+    mass_dish(time::Float64, cp::Union{Float64,Nothing}, dish::Int64, rdish::Int64, rf::Restaurants)
 
 """
-function mass_table(time::Float64, table::Int64, ntable::Int64, rf::RestaurantArray)
-
-    # initialize mass
-    mass = 0.0
-
-    if ntable != 0      # customers at table
-
-        # retrieve dish value
-        dish_value = rf.Xstar[table]
-
-        # compute mass
-        mass = rf.alpha * kernel(dish_value, time, rf.eta) * tau_ratio(ntable, rf.alpha * rf.KInt[table], rf.beta, rf.sigma)
-
-    end
-
-    return mass
-    
-end # mass_table
-
-"""
-    mass_dish(time::Float64, dish::Int64, rdish::Int64, rf::RestaurantFranchise)
-
-"""
-function mass_dish(time::Float64, dish::Int64, rdish::Int64, rf::RestaurantFranchise)
+function mass_dish(time::Float64, cp::Union{Float64,Nothing}, dish::Int64, rdish::Int64, rf::Restaurants)
 
     # initialize mass
     mass = 0.0
@@ -445,7 +287,7 @@ function mass_dish(time::Float64, dish::Int64, rdish::Int64, rf::RestaurantFranc
         dish_value = rf.Xstar[dish]
 
         # compute mass
-        mass = rf.alpha * kernel(dish_value, time, rf.eta) * tau(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma)
+        mass = rf.alpha * kernel(dish_value, time, cp, rf.kappa) * tau(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma)
         mass *= tau_ratio(rdish, rf.D * psi(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma), rf.beta0, rf.sigma0)
 
     end
@@ -455,24 +297,20 @@ function mass_dish(time::Float64, dish::Int64, rdish::Int64, rf::RestaurantFranc
 end # mass_dish
 
 """
-    new_allocation(cust::Int64, mass_tables::Vector{Float64}, mass_dishes::Vector{Float64}, rf::RestaurantFranchise)
+    new_allocation(obs::Int64, mass_tables::Vector{Float64}, mass_dishes::Vector{Float64}, rf::Restaurants)
 
 """
-function new_allocation(cust::Int64, mass_tables::Vector{Float64}, mass_dishes::Vector{Float64}, rf::RestaurantFranchise)
+function new_allocation(obs::Int64, mass_tables::Vector{Float64}, mass_dishes::Vector{Float64}, rf::Restaurants)
 
     # retrieve customer data
-    if isnothing(rf.CoxProd)    # exchangeable model
-        time, rest = rf.T[cust], rf.Delta[cust]
-    else    # regression model
-        time, cp, rest = rf.T[cust], rf.CoxProd[cust], rf.Delta[cust]
-    end
+    time, rest = rf.T[obs], rf.Delta[obs]
+    cp = (isnothing(rf.CoxProd) ? nothing : rf.CoxProd[obs])
 
     # initialize latent variables
-    dish = 0
-    table = 0
+    dish, table = 0, 0
 
     # retrieve base mass
-    mass_base = rf.theta * rf.mass_base[cust]
+    mass_base = rf.theta * rf.mass_base[obs]
 
     # masses vector
     masses = [sum(mass_tables), sum(mass_dishes), mass_base]
@@ -495,6 +333,7 @@ function new_allocation(cust::Int64, mass_tables::Vector{Float64}, mass_dishes::
         # update counts matrices
         rf.n[dish] += 1         # customers per dish
         rf.q[table] += 1        # customers per table
+        if !rf.hierarchical rf.r[table] += 1 end    # tables per dish
 
     elseif case == 2    # sit at new table, eating old dish
 
@@ -505,7 +344,7 @@ function new_allocation(cust::Int64, mass_tables::Vector{Float64}, mass_dishes::
 
         # update counts matrices
         rf.n[dish] += 1     # customers per dish
-        rf.r[dish] += 1     # tables per  dish
+        rf.r[dish] += 1     # tables per dish
 
         # find new table index
         table = find_table(rf)
@@ -525,14 +364,10 @@ function new_allocation(cust::Int64, mass_tables::Vector{Float64}, mass_dishes::
         while flag == false     # rejection sampling
 
             # sample dish proposal from base measure
-            dish_value = rand(rf.base_measure)
+            dish_value = rand() * time
 
             # acceptance probability
-            if isnothing(rf.CoxProd)    # exchangeable model
-                accept_prob = likelihood_base(dish_value, time, rf) / likelihood_base(time, time, rf)
-            else    # regression model
-                accept_prob = likelihood_base(dish_value, time, cp, rf) / likelihood_base(time, time, cp, rf)
-            end
+            accept_prob = likelihood_base(dish_value, time, cp, rf) / likelihood_base(time, time, cp, rf)
 
             if rand() < accept_prob     # accept proposal
                 flag = true
@@ -540,21 +375,15 @@ function new_allocation(cust::Int64, mass_tables::Vector{Float64}, mass_dishes::
 
         end
 
-        # find new dish index
+        # find new dish and table index
         dish = find_dish(rf)
-
-        # find new table index
-        table = find_table(rf)
+        table = (rf.hierarchical ? find_table(rf) : dish)
 
         # update latent variables
         rf.Xstar[dish] = dish_value
 
         # update precomputed variables
-        if isnothing(rf.CoxProd)    # exchangeable model
-            rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.eta)
-        else    # regression model
-            rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.CoxProd, rf.eta)
-        end
+        rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.CoxProd, rf.kappa)
 
         # update counts vectors
         rf.n[dish] += 1         # customers per dish
@@ -568,104 +397,16 @@ function new_allocation(cust::Int64, mass_tables::Vector{Float64}, mass_dishes::
     end # if
 
     # update latent variables
-    rf.X[cust] = dish       # customer dish
-    rf.Z[cust] = table      # customer table
+    rf.X[obs] = dish        # customer dish
+    rf.Z[obs] = table       # customer table
 
 end # new_allocation
 
 """
-    new_allocation(cust::Int64, mass_tables::Vector{Float64}, rf::RestaurantArray)
+    find_table(rest::Int64, rf::Restaurants)
 
 """
-function new_allocation(cust::Int64, mass_tables::Vector{Float64}, rf::RestaurantArray)
-
-    # retrieve customer data
-    if isnothing(rf.CoxProd)    # exchangeable model
-        time, rest = rf.T[cust], rf.Delta[cust]
-    else    # regression model
-        time, cp, rest = rf.T[cust], rf.CoxProd[cust], rf.Delta[cust]
-    end
-
-    # initialize latent table
-    table = 0
-
-    # retrieve base mass
-    mass_base = rf.theta * rf.mass_base[cust]
-
-    # masses vector
-    masses = [sum(mass_tables), mass_base]
-
-    # sample case
-    # d = Categorical(masses / sum(masses))       # categorical distribution
-    # case = rand(d)                              # sample case
-    case = sample_categorical(masses)       # sample case
-
-    if case == 1    # sit at old table
-
-        # sample table
-        # d = Categorical(mass_tables / sum(mass_tables))     # categorical distribution
-        # table = rand(d)                                     # sample table
-        table = sample_categorical(mass_tables)     # sample table
-
-        # update counts matrices
-        rf.n[table] += 1        # customers per table
-
-    elseif case == 2    # sit at new table
-
-        # initialize dish value
-        dish_value = 0.0
-
-        # sample dish value
-        flag = false
-        while flag == false     # rejection sampling
-
-            # sample dish proposal from base measure
-            dish_value = rand(rf.base_measure)
-
-            # acceptance probability
-            if isnothing(rf.CoxProd)    # exchangeable model
-                accept_prob = likelihood_base(dish_value, time, rf) / likelihood_base(time, time, rf)
-            else    # regression model
-                accept_prob = likelihood_base(dish_value, time, cp, rf) / likelihood_base(time, time, cp, rf)
-            end
-
-            if rand() < accept_prob     # accept proposal
-                flag = true
-            end
-
-        end
-
-        # find new table index
-        table = find_table(rf)
-
-        # update latent variables
-        rf.Xstar[table] = dish_value
-
-        # update precomputed variables
-        if isnothing(rf.CoxProd)    # exchangeable model
-            rf.KInt[table] = KernelInt(dish_value, rf.T, rf.eta)
-        else    # regression model
-            rf.KInt[table] = KernelInt(dish_value, rf.T, rf.CoxProd, rf.eta)
-        end
-
-        # update counts vectors
-        rf.n[table] += 1        # customers per table
-
-        # update lookup vectors
-        rf.table_rest[table] = rest      # rest index per table
-
-    end # if
-
-    # update latent variables
-    rf.X[cust] = table          # customer table
-
-end # new_allocation
-
-"""
-    find_table(rest::Int64, rf::RestaurantFranchise)
-
-"""
-function find_table(rf::RestaurantFranchise)
+function find_table(rf::Restaurants)
 
     # find first empty table at restaurant
     table = findfirst(rf.q .== 0)
@@ -690,39 +431,10 @@ function find_table(rf::RestaurantFranchise)
 end # find_table
 
 """
-    find_table(rf::RestaurantArray)
+    find_dish(rf::Restaurants)
 
 """
-function find_table(rf::RestaurantArray)
-
-    # find first empty table index
-    table = findfirst(rf.n .== 0)
-
-    if (table === nothing)       # no empty table
-
-        # tables
-        k = length(rf.n)
-
-        # double vectors lengths
-        append!(rf.Xstar, zeros(Float64, k))
-        append!(rf.KInt, zeros(Float64, k))
-        append!(rf.n, zeros(Int64, k))
-        append!(rf.table_rest, zeros(Int64, k))
-
-        # new table index
-        table = k + 1
-        
-    end
-
-    return table
-
-end # find_table
-
-"""
-    find_dish(rf::RestaurantFranchise)
-
-"""
-function find_dish(rf::RestaurantFranchise)
+function find_dish(rf::Restaurants)
 
     # find first empty dish index
     dish = findfirst(rf.r .== 0)
@@ -738,6 +450,13 @@ function find_dish(rf::RestaurantFranchise)
         append!(rf.n, zeros(Int64, k))
         append!(rf.r, zeros(Int64, k))
 
+        # double vectors lengths
+        if !rf.hierarchical     # restaurant array
+            append!(rf.q, zeros(Int64, k))
+            append!(rf.table_dish, zeros(Int64, k))
+            append!(rf.table_rest, zeros(Int64, k))
+        end
+
         # new dish index
         dish = k + 1
         
@@ -746,230 +465,3 @@ function find_dish(rf::RestaurantFranchise)
     return dish
 
 end # find_dish
-
-"""
-    Gibbs(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel, marginal_estimators::Vector{TypeM}, conditional_estimators::Vector{TypeC}, 
-            num_samples::@NamedTuple{n::Int64, m::Int64}; 
-            thin::Int64 = 10, burn_in::Int64 = 0, started::Bool = false) where {TypeM <: MarginalEstimator, TypeC <: ConditionalEstimator}
-
-"""
-function Gibbs(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel, marginal_estimators::Vector{TypeM}, conditional_estimators::Vector{TypeC}, 
-        num_samples::@NamedTuple{n::Int64, m::Int64}; 
-        thin::Int64 = 10, burn_in::Int64 = 0, started::Bool = false) where {TypeM <: MarginalEstimator, TypeC <: ConditionalEstimator}
-    
-    # create Diagnostics
-    dgn = Diagnostics(burn_in)
-
-    # initialize latent variables
-    if started == false
-        Gibbs_initialize(rf, cm)
-    end
-
-    # burn-in phase
-    @showprogress for _ in 1:burn_in
-        Gibbs_step(rf, cm, dgn)
-    end
-
-    # inference phase
-    @showprogress for _ in 1:num_samples.n
-
-        # run chain
-        for _ in 1:thin
-            Gibbs_step(rf, cm, dgn)
-        end
-
-        # inference
-        for est in marginal_estimators
-            append(est, rf, pushfirst!(exp.(cm.xi), 1.0))
-        end
-
-        # posterior sampling
-        for _ in 1:num_samples.m
-
-            # posterior sampling
-            CRMs = sample_measures(rf)
-
-            # inference
-            for est in conditional_estimators
-                append(est, CRMs, rf, pushfirst!(exp.(cm.xi), 1.0))
-            end
-
-        end
-
-    end
-
-    # return Diagnostics
-    return dgn
-
-end # Gibbs
-
-"""
-    Gibbs_initialize(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel)
-
-"""
-function Gibbs_initialize(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel)
-
-    # precompute quantities
-    precompute_mass_base(rf)
-
-    # sample allocations
-    for (cust, disease) in enumerate(rf.Delta)
-        if disease != 0
-            sample_allocation_init(cust, rf)
-        end
-    end
-
-    # resampling
-    resample_dishes(rf)
-    resample_theta(rf)
-
-    # resampling hyperparameters
-    resample_alpha(rf)
-    resample_eta(rf)
-
-    # resampling coefficients
-    resample_coefficients(rf, cm)
-
-end # Gibbs_initialize
-
-"""
-    Gibbs_step(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel, dgn::Diagnostics)
-
-"""
-function Gibbs_step(rf::Union{RestaurantFranchise,RestaurantArray}, cm::CoxModel, dgn::Diagnostics)
-
-    # sample allocations
-    for (cust, disease) in enumerate(rf.Delta)
-        if disease != 0
-            sample_allocation(cust, rf)
-        end
-    end
-
-    # resampling
-    accept_dishes = resample_dishes(rf)
-    resample_theta(rf)
-
-    # resampling hyperparameters
-    (accept_alpha, flag_alpha) = resample_alpha(rf)
-    (accept_eta, flag_eta) = resample_eta(rf)
-
-    # resampling coefficients
-    (accept_coeffs, flag_coeffs) = resample_coefficients(rf, cm)
-
-    # precompute quantities
-    if (flag_alpha || flag_eta || flag_coeffs) precompute_mass_base(rf) end
-
-    # diagnostics
-    append(dgn, rf, cm, accept_dishes, accept_alpha, accept_eta, accept_coeffs)
-
-end # Gibbs_step
-
-"""
-    mass_base(time::Float64, cp::Float64, rf::Union{RestaurantFranchise,RestaurantArray})
-
-"""
-function mass_base(time::Float64, cp::Float64, rf::Union{RestaurantFranchise,RestaurantArray})
-
-    # integrand function
-    f(x::Float64) = likelihood_base(x, time, cp, rf) * pdf(rf.base_measure, x)
-
-    # compute integral
-    return integrate(f, legendre; lower = 0.0, upper = time)
-
-end # mass_base
-
-"""
-    likelihood_base(x::Float64, time::Float64, cp::Float64, rf::RestaurantFranchise)
-
-"""
-function likelihood_base(x::Float64, time::Float64, cp::Float64, rf::RestaurantFranchise)
-
-    # precompute KernelInt
-    KInt = rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.eta)
-        
-    # compute likelihood ratio
-    return rf.alpha * kernel(x, time, cp, rf.eta) * tau(KInt, rf.beta, rf.sigma) * tau(rf.D * psi(KInt, rf.beta, rf.sigma), rf.beta0, rf.sigma0)
-
-end # likelihood_base
-
-"""
-    likelihood_base(x::Float64, time::Float64, cp::Float64, rf::RestaurantArray)
-
-"""
-function likelihood_base(x::Float64, time::Float64, cp::Float64, rf::RestaurantArray)
-        
-    # compute likelihood ratio
-    return rf.alpha * kernel(x, time, cp, rf.eta) * tau(rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.eta), rf.beta, rf.sigma)
-
-end # likelihood_base
-
-"""
-    mass_table(time::Float64, cp::Float64, table::Int64, qtable::Int64, rf::RestaurantFranchise)
-
-"""
-function mass_table(time::Float64, cp::Float64, table::Int64, qtable::Int64, rf::RestaurantFranchise)
-
-    # initialize mass
-    mass = 0.0
-
-    if qtable != 0      # customers at table
-
-        # retrieve dish and dish value
-        dish = rf.table_dish[table]
-        dish_value = rf.Xstar[dish]
-
-        # compute mass
-        mass = rf.alpha * kernel(dish_value, time, cp, rf.eta) * tau_ratio(qtable, rf.alpha * rf.KInt[dish], rf.beta, rf.sigma)
-
-    end
-    
-    return mass
-
-end # mass_table
-
-"""
-    mass_table(time::Float64, cp::Float64, table::Int64, ntable::Int64, rf::RestaurantArray)
-
-"""
-function mass_table(time::Float64, cp::Float64, table::Int64, ntable::Int64, rf::RestaurantArray)
-
-    # initialize mass
-    mass = 0.0
-
-    if ntable != 0      # customers at table
-
-        # retrieve dish value
-        dish_value = rf.Xstar[table]
-
-        # compute mass
-        mass = rf.alpha * kernel(dish_value, time, cp, rf.eta) * tau_ratio(ntable, rf.alpha * rf.KInt[table], rf.beta, rf.sigma)
-
-    end
-
-    return mass
-    
-end # mass_table
-
-"""
-    mass_dish(time::Float64, cp::Float64, dish::Int64, rdish::Int64, rf::RestaurantFranchise)
-
-"""
-function mass_dish(time::Float64, cp::Float64, dish::Int64, rdish::Int64, rf::RestaurantFranchise)
-
-    # initialize mass
-    mass = 0.0
-
-    if rdish != 0       # tables at dish
-
-        # retrieve dish value
-        dish_value = rf.Xstar[dish]
-
-        # compute mass
-        mass = rf.alpha * kernel(dish_value, time, cp, rf.eta) * tau(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma)
-        mass *= tau_ratio(rdish, rf.D * psi(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma), rf.beta0, rf.sigma0)
-
-    end
-
-    return mass
-    
-end # mass_dish

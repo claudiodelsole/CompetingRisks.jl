@@ -1,112 +1,102 @@
-# export structs
-export ConditionalEstimator, HazardConditional, SurvivalConditional
-
-abstract type ConditionalEstimator end
+"""
+    append(estimator::Estimator, crms::Vector{CRM}, rf::Restaurants, CoxProd::Union{Vector{Float64},Nothing})
 
 """
-    struct HazardConditional <: ConditionalEstimator
+function append(estimator::Estimator, crms::Vector{CRM}, rf::Restaurants, CoxProd::Union{Vector{Float64},Nothing})
 
-"""
-struct HazardConditional <: ConditionalEstimator
+    # compute survival estimate
+    survival = survival_measures(crms, estimator.times, rf, CoxProd)
 
-    # dimensions
-    D::Int64        # number of diseases
-    L::Int64        # number of categorical predictors
+    # compute hazard estimate
+    hazard = hazard_measures(crms, estimator.times, rf, CoxProd)
 
-    # times vector
-    times::Vector{Float64}
-
-    # posterior samples
-    post_samples::Vector{Float64}
-
-    # explicit constructor
-    function HazardConditional(times::Vector{Float64}, D::Int64; L::Int64 = 0)
-
-        # initialize vector
-        post_samples = Array{Float64}(undef, 0)
-
-        # create HazardConditional
-        return new(D, L, times, post_samples)
-
-    end # HazardConditional
-
-end # struct
-
-"""
-    struct SurvivalConditional <: ConditionalEstimator
-
-"""
-struct SurvivalConditional <: ConditionalEstimator
-
-    # dimensions
-    L::Int64        # number of categorical predictors
-
-    # times vector
-    times::Vector{Float64}
-
-    # posterior samples
-    post_samples::Vector{Float64}
-
-    # explicit constructor
-    function SurvivalConditional(times::Vector{Float64}; L::Int64 = 0)
-
-        # initialize vector
-        post_samples = Array{Float64}(undef, 0)
-
-        # create SurvivalConditional
-        return new(L, times, post_samples)
-
-    end # SurvivalConditional
-
-end # struct
-
-"""
-    append(estimator::HazardConditional, CRMs::Union{HierarchicalCRM,CRMArray}, rf::Union{RestaurantFranchise,RestaurantArray})
-
-"""
-function append(estimator::HazardConditional, CRMs::Union{HierarchicalCRM,CRMArray}, rf::Union{RestaurantFranchise,RestaurantArray})
-
-    # compute estimate
-    estimate = hazard_measures(CRMs, estimator.times, rf)
-
-    # append estimate
-    append!(estimator.post_samples, estimate)
+    # append estimates
+    append!(estimator.survival_samples, survival)
+    append!(estimator.hazard_samples, hazard)
 
 end # append
 
 """
-    append(estimator::SurvivalConditional, CRMs::Union{HierarchicalCRM,CRMArray}, rf::Union{RestaurantFranchise,RestaurantArray})
+    survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, _::Nothing)
 
 """
-function append(estimator::SurvivalConditional, CRMs::Union{HierarchicalCRM,CRMArray}, rf::Union{RestaurantFranchise,RestaurantArray})
-
-    # compute estimate
-    estimate = survival_measures(CRMs, estimator.times, rf)
-
-    # append estimate
-    append!(estimator.post_samples, estimate)
-
-end # append
-
-"""
-    hazard_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::RestaurantFranchise)
-
-"""
-function hazard_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::RestaurantFranchise)
+function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, _::Nothing)
 
     # initialize estimate vector
-    estimate = zeros(length(times), hCRM.D)
+    estimate = zeros(length(times))
 
     # compute estimates
     for (t, time) in enumerate(times)   # loop on times
-        for (d, jumps) in enumerate(eachcol(hCRM.jumps))     # loop on diseases
+
+        # initialize estimate
+        est = 0.0
+
+        for crm in crms     # loop on causes
+            for (atom, jump) in zip(crm.locations, crm.jumps)       # loop on locations and jumps
+                est -= rf.alpha * KernelInt(atom, time, nothing, rf.kappa) * jump
+            end
+        end
+
+        # store estimate
+        estimate[t] = est
+
+    end
+
+    return exp.(estimate)
+
+end # survival_measures
+
+"""
+    survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, CoxProd::Vector{Float64})
+
+"""
+function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, CoxProd::Vector{Float64})
+
+    # initialize estimate vector
+    estimate = zeros(length(times), length(CoxProd))
+
+    # compute estimates
+    for (t, time) in enumerate(times)   # loop on times
+        for (l, cp) in enumerate(CoxProd)   # loop on predictors
+
+            # initialize estimate
+            est = 0.0
+
+            for crm in crms     # loop on causes
+                for (atom, jump) in zip(crm.locations, crm.jumps)       # loop on locations and jumps
+                    est -= rf.alpha * KernelInt(atom, time, cp, rf.kappa) * jump
+                end
+            end
+
+            # store estimate
+            estimate[t,l] = est
+
+        end
+    end
+
+    return exp.(estimate)
+
+end # survival_measures
+
+"""
+    hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, _::Nothing)
+
+"""
+function hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, _::Nothing)
+
+    # initialize estimate vector
+    estimate = zeros(length(times), length(crms))
+
+    # compute estimates
+    for (t, time) in enumerate(times)   # loop on times
+        for (d, crm) in enumerate(crms)     # loop on causes
 
             # initialize estimate
             est = 0.0
 
             # loop on locations and jumps
-            for (atom, jump) in zip(hCRM.locations, jumps)
-                est += rf.alpha * kernel(atom, time, rf.eta) * jump
+            for (atom, jump) in zip(crm.locations, crm.jumps)
+                est += rf.alpha * kernel(atom, time, nothing, rf.kappa) * jump
             end
 
             # store estimate
@@ -120,143 +110,25 @@ function hazard_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::Rest
 end # hazard_measures
 
 """
-    hazard_measures(CRMs::CRMArray, times::Vector{Float64}, rf::RestaurantArray)
+    hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, CoxProd::Vector{Float64})
 
 """
-function hazard_measures(CRMs::CRMArray, times::Vector{Float64}, rf::RestaurantArray)
+function hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, CoxProd::Vector{Float64})
 
     # initialize estimate vector
-    estimate = zeros(length(times), CRMs.D)
-
-    # compute estimates
-    for (t, time) in enumerate(times)   # loop on times
-
-        # initialize estimate
-        est = zeros(Float64, CRMs.D)
-
-        # loop on locations and jumps
-        for (d, atom, jump) in zip(CRMs.jump_disease, CRMs.locations, CRMs.jumps)   
-            if d != 0    # jump assigned to disease
-                est[d] += rf.alpha * kernel(atom, time, rf.eta) * jump
-            end
-        end
-
-        # store estimate
-        estimate[t,:] = est
-
-    end
-
-    return estimate
-
-end # hazard_measures
-
-"""
-    survival_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::RestaurantFranchise)
-
-"""
-function survival_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::RestaurantFranchise)
-
-    # initialize estimate vector
-    estimate = zeros(length(times))
-
-    # compute estimates
-    for (t, time) in enumerate(times)   # loop on times
-
-        # initialize estimate
-        est = 0.0
-
-        for jumps in eachcol(hCRM.jumps)     # loop on diseases
-            for (atom, jump) in zip(hCRM.locations, jumps)      # loop on locations and jumps
-                est -= rf.alpha * KernelInt(atom, time, rf.eta) * jump
-            end
-        end
-
-        # store estimate
-        estimate[t] = est
-
-    end
-
-    return exp.(estimate)
-
-end # survival_measures
-
-"""
-    survival_measures(CRMs::CRMArray, times::Vector{Float64}, rf::RestaurantArray)
-
-"""
-function survival_measures(CRMs::CRMArray, times::Vector{Float64}, rf::RestaurantArray)
-
-    # initialize estimate vector
-    estimate = zeros(length(times))
-
-    # compute estimates
-    for (t, time) in enumerate(times)   # loop on times
-
-        # initialize estimate
-        est = 0.0
-
-        # loop on locations and jumps
-        for (atom, jump) in zip(CRMs.locations, CRMs.jumps)
-            est -= rf.alpha * KernelInt(atom, time, rf.eta) * jump
-        end
-
-        # store estimate
-        estimate[t] = est
-
-    end
-
-    return exp.(estimate)
-
-end # survival_measures
-
-"""
-    append(estimator::HazardConditional, CRMs::Union{HierarchicalCRM,CRMArray}, rf::Union{RestaurantFranchise,RestaurantArray}, CoxProd::Vector{Float64})
-
-"""
-function append(estimator::HazardConditional, CRMs::Union{HierarchicalCRM,CRMArray}, rf::Union{RestaurantFranchise,RestaurantArray}, CoxProd::Vector{Float64})
-
-    # compute estimate
-    estimate = hazard_measures(CRMs, estimator.times, rf, CoxProd)
-
-    # append estimate
-    append!(estimator.post_samples, estimate)
-
-end # append
-
-"""
-    append(estimator::SurvivalConditional, CRMs::Union{HierarchicalCRM,CRMArray}, rf::Union{RestaurantFranchise,RestaurantArray}, CoxProd::Vector{Float64})
-
-"""
-function append(estimator::SurvivalConditional, CRMs::Union{HierarchicalCRM,CRMArray}, rf::Union{RestaurantFranchise,RestaurantArray}, CoxProd::Vector{Float64})
-
-    # compute estimate
-    estimate = survival_measures(CRMs, estimator.times, rf, CoxProd)
-
-    # append estimate
-    append!(estimator.post_samples, estimate)
-
-end # append
-
-"""
-    hazard_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::RestaurantFranchise, CoxProd::Vector{Float64})
-
-"""
-function hazard_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::RestaurantFranchise, CoxProd::Vector{Float64})
-
-    # initialize estimate vector
-    estimate = zeros(length(times), length(CoxProd), hCRM.D)
+    estimate = zeros(length(times), length(CoxProd), length(crms))
 
     # compute estimates
     for (t, time) in enumerate(times)   # loop on times
         for (l, cp) in enumerate(CoxProd)   # loop on predictors
-            for (d, jumps) in enumerate(eachcol(hCRM.jumps))    # loop on diseases
+            for (d, crm) in enumerate(crms)     # loop on causes
 
                 # initialize estimate
                 est = 0.0
 
                 # loop on locations and jumps
-                for (atom, jump) in zip(hCRM.locations, jumps)  
-                    est += rf.alpha * kernel(atom, time, cp, rf.eta) * jump
+                for (atom, jump) in zip(crm.locations, crm.jumps)
+                    est += rf.alpha * kernel(atom, time, cp, rf.kappa) * jump
                 end
 
                 # store estimate
@@ -269,100 +141,3 @@ function hazard_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::Rest
     return estimate
 
 end # hazard_measures
-
-"""
-    hazard_measures(CRMs::CRMArray, times::Vector{Float64}, rf::RestaurantArray, CoxProd::Vector{Float64})
-
-"""
-function hazard_measures(CRMs::CRMArray, times::Vector{Float64}, rf::RestaurantArray, CoxProd::Vector{Float64})
-
-    # initialize estimate vector
-    estimate = zeros(length(times), length(CoxProd), CRMs.D)
-
-    # compute estimates
-    for (t, time) in enumerate(times)   # loop on times
-        for (l, cp) in enumerate(CoxProd)   # loop on predictors
-
-            # initialize estimate
-            est = zeros(Float64, CRMs.D)
-
-            # loop on locations and jumps
-            for (d, atom, jump) in zip(CRMs.jump_disease, CRMs.locations, CRMs.jumps)   
-                if d != 0    # jump assigned to disease
-                    est[d] += rf.alpha * kernel(atom, time, cp, rf.eta) * jump
-                end
-
-            end
-
-            # store estimate
-            estimate[t,l,:] = est
-
-        end
-    end
-
-    return estimate
-
-end # hazard_measures
-
-"""
-    survival_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::RestaurantFranchise, CoxProd::Vector{Float64})
-
-"""
-function survival_measures(hCRM::HierarchicalCRM, times::Vector{Float64}, rf::RestaurantFranchise, CoxProd::Vector{Float64})
-
-    # initialize estimate vector
-    estimate = zeros(length(times), length(CoxProd))
-
-    # compute estimates
-    for (t, time) in enumerate(times)   # loop on times
-        for (l, cp) in enumerate(CoxProd)   # loop on predictors
-
-            # initialize estimate
-            est = 0.0
-
-            for jumps in eachcol(hCRM.jumps)    # loop on diseases
-                for (atom, jump) in zip(hCRM.locations, jumps)    # loop on locations and jumps
-                    est -= rf.alpha * KernelInt(atom, time, cp, rf.eta) * jump
-                end
-            end
-
-            # store estimate
-            estimate[t,l] = est
-
-        end
-    end
-
-    return exp.(estimate)
-
-end # survival_measures
-
-"""
-    survival_measures(CRMs::CRMArray, times::Vector{Float64}, rf::RestaurantArray, CoxProd::Vector{Float64})
-
-"""
-function survival_measures(CRMs::CRMArray, times::Vector{Float64}, rf::RestaurantArray, CoxProd::Vector{Float64})
-
-    # initialize estimate vector
-    estimate = zeros(length(times), length(CoxProd))
-
-    # compute estimates
-    for (t, time) in enumerate(times)   # loop on times
-        for (l, cp) in enumerate(CoxProd)   # loop on predictors
-
-            # initialize estimate
-            est = 0.0
-
-            # loop on locations and jumps
-            for (atom, jump) in zip(CRMs.locations, CRMs.jumps)
-                est -= rf.alpha * KernelInt(atom, time, cp, rf.eta) * jump
-            end
-
-            # store estimate
-            estimate[t,l] = est
-
-        end
-    end
-
-    return exp.(estimate)
-
-end # survival_measures

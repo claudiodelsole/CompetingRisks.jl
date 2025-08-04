@@ -4,8 +4,13 @@ using CompetingRisks
 # imports
 import Random: seed!
 import Distributions: MixtureModel, LocationScale, Weibull
-import Statistics: mean
+import StatsBase: counts
+import Statistics: mean, std
 import Plots: plot, plot!
+
+# include auxiliary files
+include("../aux_code/create_datasets.jl")
+include("../aux_code/errors.jl")
 
 ##########
 # Simulation study setup
@@ -26,25 +31,20 @@ common = MixtureModel([Weibull(1.2), LocationScale(1.0, 1.0, Weibull(3.0))])
 true_models = [MixtureModel([Weibull(1.5), common]), MixtureModel([Weibull(2.0), common]), MixtureModel([Weibull(2.5), common])]
 
 # models summary
-summary_models(true_models)
-
-# censoring distribution
-# censoring = Gamma(1.0, 6.0)
+# summary_models(true_models)
 
 # times vector
-upper_time = 2.0
-times = Vector{Float64}(0.0:0.01:upper_time)
+times = collect(0.0:0.01:2.0)
 
 # true hazard functions
 hazard_true = [hazard(model, t) for t in times, model in true_models]
-cumhazard_true = mapslices(f -> integrate_trapz(f, times; cum = true), hazard_true; dims = 1)
 
 # true survival function
 survival_true = [prod([survival(model, t) for model in true_models]) for t in times]
 
 # true incidence functions
 incidence_true = [hazard(model, t) * prod([survival(model, t) for model in true_models]) for t in times, model in true_models]
-cumincidence_true = mapslices(f -> integrate_trapz(f, times; cum = true), incidence_true; dims = 1)
+cumincidence_true = mapslices(f -> integrate_trapz(f, times, cum = true), incidence_true, dims = 1)
 
 # true density function
 density_true = vec(sum(incidence_true, dims = 2))
@@ -54,68 +54,79 @@ density_true = vec(sum(incidence_true, dims = 2))
 ##########
 
 # labels and colors
-mycolors = reshape(1:length(true_models), 1, :)
-mylabels = reshape(["cause " * string(d) for d in 1:length(true_models)], 1, :)
+mycolors = reshape(range(1, length(true_models)), 1, :)
+mylabels = reshape(["cause " * string(d) for d in range(1, length(true_models))], 1, :)
 
 # hazard functions
-plot(title = "", legend = :topleft, size = (480,360), xlim = (0.0, 1.65), ylim = (0.0, 1.6))
+plot(legend = :topleft, size = (480,360), xlim = (0.0, 1.65), ylim = (0.0, 1.6), xlabel = "\$t\$", ylabel = "\$h_δ(t)\$")
 plot!(times, hazard_true, linecolor = mycolors, label = mylabels)
 
 # incidence functions
-plot(title = "", legend = :topright, size = (480,360), xlim = (0.0, 1.65), ylim = (0.0, 0.48))
+plot(legend = :topright, size = (480,360), xlim = (0.0, 1.65), ylim = (0.0, 0.48), xlabel = "\$t\$", ylabel = "\$f_δ(t)\$")
 plot!(times, incidence_true, linecolor = mycolors, label = mylabels)
 
 ##########
-# Setup kernel choice
+# Setup R
 ##########
 
-# kernel choice
-CompetingRisks.kernel(x::Float64, t::Float64, eta::Float64) = CompetingRisks.kernel_DL(x, t, eta)
+# setup RCall
+using RCall
 
-# KernelInt choice
-CompetingRisks.KernelInt(x::Float64, t::Float64, eta::Float64) = CompetingRisks.KernelInt_DL(x, t, eta)
+# import required libraries
+R"library(survival)"
+R"library(cmprsk)"
 
-# resampling step
-CompetingRisks.resample_eta(_::Union{RestaurantFranchise,RestaurantArray}) = (0.0, false)
+# import data
+@rput times
 
 ##########
 # Run tests: frequentist estimators
 ##########
 
 # initialize counting vectors
-test_counts = zeros(D, num_tests)
+causes_counts = zeros(D, num_tests)
 
 # initialize error vectors
-test_survival_errors = zeros(num_tests)
-test_cumincidence_errors = zeros(D, num_tests)
+errors_survival = zeros(num_tests)
+errors_cumincidence = zeros(D, num_tests)
 
 # loop on tests
-for test in 1:num_tests
+for test in range(1, num_tests)
 
     # set seed for reproducibility
     seed!(test)
 
     # create synthetic dataset
-    crd = independent_dataset(N, true_models)
-    # crd = independent_dataset(N, true_models; censoring)
+    data = independent_dataset(N, true_models)
 
     # observation counts
-    for d in 1:D
-        test_counts[d,test] = sum(crd.Delta .== d)
-    end
+    causes_counts[:,test] = counts(data.Delta, D)
+
+    # import data
+    @rput data
 
     # posterior survival function
-    survival_freq = kaplan_meier(crd, times).estimate
-    test_survival_errors[test] = survival_error(survival_freq, survival_true)
+    R"fit <- survfit(Surv(T, Delta > 0) ~ 1, data = data)"
+    survival_freq = vcat(rcopy(R"summary(fit, times)$surv"), zeros(Float64, length(times) - length(rcopy(R"summary(fit, times)$surv"))))
+    errors_survival[test] = error_survival(survival_freq, survival_true)
 
     # posterior cumulative incidence functions
-    cumincidence_freq = aalen_johansen(crd, times)
-    test_cumincidence_errors[:,test] = cumincidence_error(cumincidence_freq, cumincidence_true)
+    R"fit <- cuminc(data$T, data$Delta)"
+    cumincidence_freq = mapslices(values -> map(x -> ismissing(x) ? maximum(skipmissing(values)) : x, values), Matrix(transpose(rcopy(R"timepoints(fit, times)$est"))), dims = 1)
+    errors_cumincidence[:, test] = error_cumincidence(cumincidence_freq, cumincidence_true)
 
     # print output
     println("Completed test ", string(test))
 
 end
+
+# compute means and standard deviations
+mean_std(samples::Array{Float64}, d::Int64) = (mu = dropdims(mean(samples, dims = d), dims = d), sd = dropdims(std(samples, dims = d), dims = d) / sqrt(num_tests))
+
+# compute means and standard deviations
+causes_counts = vec(mean(causes_counts, dims = 2))
+errors_survival = (mu = mean(errors_survival), sd = std(errors_survival) / sqrt(num_tests))
+errors_cumincidence = mean_std(errors_cumincidence, 2)
 
 ##########
 # Tests results: frequentist estimators
@@ -126,525 +137,364 @@ println()
 
 # observations counts
 println("--- Observations counts ---")
-test_counts = vec(mean(test_counts, dims = 2))
-println("counts: ", string(test_counts))
+println("counts:\t", string(causes_counts))
 println()
 
 # print output
 println("--- Estimation errors ---")
 
 # survival errors
-println("survival: ", string(mean(test_survival_errors)))
+println("survival:\t", string(errors_survival.mu), "\t(", string(errors_survival.sd), ")")
 
 # cumincidence errors
-test_cumincidence_errors = vec(mean(test_cumincidence_errors, dims = 2))
-println("cumincidence: ", string(test_cumincidence_errors))
+println("cumincidence:\t", string(errors_cumincidence.mu), "\t(", string(errors_cumincidence.sd), ")")
 println()
 
 ##########
-# Run tests: RestaurantFranchise estimators - marginal method
+# Setup Gibbs sampling algorithm
+##########
+
+# kernel choice
+CompetingRisks.kernel(x::Float64, t::Float64, _::Nothing, kappa::Float64) = CompetingRisks.kernel_DL(x, t, nothing, kappa)
+CompetingRisks.KernelInt(x::Float64, t::Float64, _::Nothing, kappa::Float64) = CompetingRisks.KernelInt_DL(x, t, nothing, kappa)
+
+# resampling step
+CompetingRisks.resample_kappa(_::Restaurants) = (0.0, false)
+
+# chain parameters
+nsamples = 1000
+burn_in, thin = 2500, 10
+
+##########
+# Run tests: restaurant franchise estimators
 ##########
 
 # initialize diagnostics vectors
-test_dishes = zeros(num_tests)
-test_theta = zeros(num_tests)
-test_logalpha = zeros(num_tests)
+dishes = zeros(num_tests)
+theta = zeros(num_tests)
+alpha = zeros(num_tests)
 
 # initialize error vectors
-test_survival_errors = zeros(num_tests)
-test_incidence_errors = zeros(D, num_tests)
-test_cumincidence_errors = zeros(D, num_tests)
+errors_survival = zeros(num_tests, 2)
+errors_incidence = zeros(D, num_tests, 2)
+errors_cumincidence = zeros(D, num_tests, 2)
 
 # initialize credible bands inclusion
-isinbands_survival = zeros(num_tests)
-isinbands_incidence = zeros(D, num_tests)
-isinbands_cumincidence = zeros(D, num_tests)
+isinbands_survival = zeros(num_tests, 2)
+isinbands_incidence = zeros(D, num_tests, 2)
+isinbands_cumincidence = zeros(D, num_tests, 2)
 
 # initialize credible bands width
-bandwidth_survival = zeros(num_tests)
-bandwidth_incidence = zeros(D, num_tests)
-bandwidth_cumincidence = zeros(D, num_tests)
+bandwidth_survival = zeros(num_tests, 2)
+bandwidth_incidence = zeros(D, num_tests, 2)
+bandwidth_cumincidence = zeros(D, num_tests, 2)
 
 # loop on tests
-for test in 1:num_tests
+for test in range(1, num_tests)
 
     # set seed for reproducibility
     seed!(test)
 
     # create synthetic dataset
-    crd = independent_dataset(N, true_models)
-    # crd = independent_dataset(N, true_models; censoring)
+    data = independent_dataset(N, true_models)
 
-    # create RestaurantFranchise
-    # rf = RestaurantFranchise(crd)
-    rf = RestaurantFranchise(crd; sigma = 0.25, sigma0 = 0.25)
-    
-    # initialize marginal estimators
-    survival_est = SurvivalMarginal(rf, times)
-    incidence_est = IncidenceMarginal(rf, times)
-    
-    # estimators vector (marginal)
-    marginal_estimators = [survival_est, incidence_est]
-    conditional_estimators = Array{ConditionalEstimator}(undef, 0)
-    
-    # chain parameters (marginal)
-    num_samples = (n = 2500, m = 0)
-    burn_in = 10000
+    # create Restaurants
+    # rf = Restaurants(data)
+    rf = Restaurants(data, sigma = 0.25, sigma0 = 0.25)
 
     # run chain
-    dgn = Gibbs(rf, marginal_estimators, conditional_estimators, num_samples; burn_in = burn_in)
+    marginal_estimator, conditional_estimator, params = posterior_sampling(rf, nothing, nsamples, times = times, burn_in = burn_in, nsamples_crms = 10)
 
     # diagnostics
-    test_dishes[test] = mean(dgn.dishes_number[burn_in+1:end])
-    test_theta[test] = mean(dgn.theta[burn_in+1:end])
-    test_logalpha[test] = mean(dgn.logalpha[burn_in+1:end])
+    dishes[test] = mean(params.dishes_number[burn_in+thin:thin:end])
+    theta[test] = mean(params.theta[burn_in+thin:thin:end])
+    alpha[test] = mean(exp.(params.logalpha[burn_in+thin:thin:end]))
+
+    ### marginal estimator
 
     # posterior survival function
-    survival_post = estimate(survival_est)
-    test_survival_errors[test] = survival_error(survival_post, survival_true)
-
-    # credible bands
-    (survival_lower, survival_upper) = credible_intervals(survival_est; lower = 0.05, upper = 0.95)
-    isinbands_survival[test] = sum(survival_lower .<= survival_true .<= survival_upper) / length(times)
-    bandwidth_survival[test] = maximum(survival_upper .- survival_lower)
+    (survival_post, survival_lower, survival_upper) = estimate_survival(marginal_estimator)
+    errors_survival[test, 1] = error_survival(survival_post, survival_true)
+    isinbands_survival[test, 1] = sum(survival_lower .<= survival_true .<= survival_upper) / length(times)
+    bandwidth_survival[test, 1] = maximum(survival_upper .- survival_lower)
     
     # posterior incidence function
-    incidence_post = estimate(incidence_est, survival_est)
-    test_incidence_errors[:,test] = incidence_error(incidence_post, incidence_true, times)
-
-    # credible bands
-    (incidence_lower, incidence_upper) = credible_intervals(incidence_est, survival_est; lower = 0.05, upper = 0.95)
-    isinbands_incidence[:,test] = [sum(incidence_lower[:,d] .<= incidence_true[:,d] .<= incidence_upper[:,d]) for d in 1:D] ./ length(times)
-    bandwidth_incidence[:,test] = [maximum(incidence_upper[:,d] .- incidence_lower[:,d]) for d in 1:D]
+    (incidence_post, incidence_lower, incidence_upper) = estimate_incidence(marginal_estimator)
+    errors_incidence[:, test, 1] = error_incidence(incidence_post, incidence_true, times)
+    isinbands_incidence[:, test, 1] = [sum(incidence_lower[:,d] .<= incidence_true[:,d] .<= incidence_upper[:,d]) for d in range(1, D)] ./ length(times)
+    bandwidth_incidence[:, test, 1] = [maximum(incidence_upper[:,d] .- incidence_lower[:,d]) for d in range(1, D)]
 
     # posterior cumulative incidence functions
-    cumincidence_post = estimate(incidence_est, survival_est; cum = true)
-    test_cumincidence_errors[:,test] = cumincidence_error(cumincidence_post, cumincidence_true)
+    (cumincidence_post, cumincidence_lower, cumincidence_upper) = estimate_incidence(marginal_estimator, cum = true)
+    errors_cumincidence[:, test,1] = error_cumincidence(cumincidence_post, cumincidence_true)
+    isinbands_cumincidence[:, test,1] = [sum(cumincidence_lower[:,d] .<= cumincidence_true[:,d] .<= cumincidence_upper[:,d]) for d in range(1, D)] ./ length(times)
+    bandwidth_cumincidence[:, test,1] = [maximum(cumincidence_upper[:,d] .- cumincidence_lower[:,d]) for d in range(1, D)]
 
-    # credible bands
-    (cumincidence_lower, cumincidence_upper) = credible_intervals(incidence_est, survival_est; cum = true, lower = 0.05, upper = 0.95)
-    isinbands_cumincidence[:,test] = [sum(cumincidence_lower[:,d] .<= cumincidence_true[:,d] .<= cumincidence_upper[:,d]) for d in 1:D] ./ length(times)
-    bandwidth_cumincidence[:,test] = [maximum(cumincidence_upper[:,d] .- cumincidence_lower[:,d]) for d in 1:D]
+    ### conditional estimator
+
+    # posterior survival function
+    (survival_post, survival_lower, survival_upper) = estimate_survival(conditional_estimator)
+    errors_survival[test, 2] = error_survival(survival_post, survival_true)
+    isinbands_survival[test, 2] = sum(survival_lower .<= survival_true .<= survival_upper) / length(times)
+    bandwidth_survival[test, 2] = maximum(survival_upper .- survival_lower)
+    
+    # posterior incidence function
+    (incidence_post, incidence_lower, incidence_upper) = estimate_incidence(conditional_estimator)
+    errors_incidence[:, test, 2] = error_incidence(incidence_post, incidence_true, times)
+    isinbands_incidence[:, test, 2] = [sum(incidence_lower[:,d] .<= incidence_true[:,d] .<= incidence_upper[:,d]) for d in range(1, D)] ./ length(times)
+    bandwidth_incidence[:, test, 2] = [maximum(incidence_upper[:,d] .- incidence_lower[:,d]) for d in range(1, D)]
+
+    # posterior cumulative incidence functions
+    (cumincidence_post, cumincidence_lower, cumincidence_upper) = estimate_incidence(conditional_estimator, cum = true)
+    errors_cumincidence[:, test, 2] = error_cumincidence(cumincidence_post, cumincidence_true)
+    isinbands_cumincidence[:, test, 2] = [sum(cumincidence_lower[:,d] .<= cumincidence_true[:,d] .<= cumincidence_upper[:,d]) for d in range(1, D)] ./ length(times)
+    bandwidth_cumincidence[:, test, 2] = [maximum(cumincidence_upper[:,d] .- cumincidence_lower[:,d]) for d in range(1, D)]
 
     # print output
     println("Completed test ", string(test))
 
 end
 
+# compute means and standard deviations
+errors_survival = mean_std(errors_survival, 1)
+errors_incidence = mean_std(errors_incidence, 2)
+errors_cumincidence = mean_std(errors_cumincidence, 2)
+
+# compute means and standard deviations
+isinbands_survival = mean_std(isinbands_survival, 1)
+isinbands_incidence = mean_std(isinbands_incidence, 2)
+isinbands_cumincidence = mean_std(isinbands_cumincidence, 2)
+
+# compute means and standard deviations
+bandwidth_survival = mean_std(bandwidth_survival, 1)
+bandwidth_incidence = mean_std(bandwidth_incidence, 2)
+bandwidth_cumincidence = mean_std(bandwidth_cumincidence, 2)
+
 ##########
-# Tests results: RestaurantFranchise estimators - marginal method
+# Tests results: restaurant franchise estimators
 ##########
 
-println("### RestaurantFranchise estimators - marginal method ###")
+println("### Restaurant franchise estimators ###")
 println()
 
-# diagnostics
-println("--- Diagnostics ---")
-println("Dishes: ", mean(test_dishes))
-println("Theta: ", mean(test_theta))
-println("Alpha: ", mean(exp.(test_logalpha)))
+# parameters
+println("--- Parameters ---")
+println("Dishes:\t", mean(dishes))
+println("Theta:\t", mean(theta))
+println("Alpha:\t", mean(alpha))
+println()
+
+println("### marginal method")
 println()
 
 # survival
 println("--- Survival function ---")
-println("error: ", string(mean(test_survival_errors)))
-println("inband: ", string(mean(isinbands_survival)))
-println("bandwidth: ", string(mean(bandwidth_survival)))
+println("error:\t", string(errors_survival.mu[1]), "\t(", string(errors_survival.sd[1]), ")")
+println("inband:\t", string(isinbands_survival.mu[1]), "\t(", string(isinbands_survival.sd[1]), ")")
+println("bandwidth:\t", string(bandwidth_survival.mu[1]), "\t(", string(bandwidth_survival.sd[1]), ")")
 println()
 
 # incidence
 println("--- Incidence functions ---")
-test_incidence_errors = vec(mean(test_incidence_errors, dims = 2))
-println("error: ", string(test_incidence_errors))
-println("inband: ", string(mean(isinbands_incidence)))
-println("bandwidth: ", string(mean(bandwidth_incidence)))
+println("error:\t", string(errors_incidence.mu[:,1]), "\t(", string(errors_incidence.sd[:,1]), ")")
+println("inband:\t", string(mean(isinbands_incidence.mu[:,1])), "\t(", string(mean(isinbands_incidence.sd[:,1])), ")")
+println("bandwidth:\t", string(mean(bandwidth_incidence.mu[:,1])), "\t(", string(mean(bandwidth_incidence.sd[:,1])), ")")
 println()
 
 # cumincidence
 println("--- Cumulative incidence functions ---")
-test_cumincidence_errors = vec(mean(test_cumincidence_errors, dims = 2))
-println("error: ", string(test_cumincidence_errors))
-println("inband: ", string(mean(isinbands_cumincidence)))
-println("bandwidth: ", string(mean(bandwidth_cumincidence)))
+println("error:\t", string(errors_cumincidence.mu[:,1]), "\t(", string(errors_cumincidence.sd[:,1]), ")")
+println("inband:\t", string(mean(isinbands_cumincidence.mu[:,1])), "\t(", string(mean(isinbands_cumincidence.sd[:,1])), ")")
+println("bandwidth:\t", string(mean(bandwidth_cumincidence.mu[:,1])), "\t(", string(mean(bandwidth_cumincidence.sd[:,1])), ")")
+println()
+
+println("### conditional method")
+println()
+
+# survival
+println("--- Survival function ---")
+println("error:\t", string(errors_survival.mu[2]), "\t(", string(errors_survival.sd[2]), ")")
+println("inband:\t", string(isinbands_survival.mu[2]), "\t(", string(isinbands_survival.sd[2]), ")")
+println("bandwidth:\t", string(bandwidth_survival.mu[2]), "\t(", string(bandwidth_survival.sd[2]), ")")
+println()
+
+# incidence
+println("--- Incidence functions ---")
+println("error:\t", string(errors_incidence.mu[:,2]), "\t(", string(errors_incidence.sd[:,2]), ")")
+println("inband:\t", string(mean(isinbands_incidence.mu[:,2])), "\t(", string(mean(isinbands_incidence.sd[:,2])), ")")
+println("bandwidth:\t", string(mean(bandwidth_incidence.mu[:,2])), "\t(", string(mean(bandwidth_incidence.sd[:,2])), ")")
+println()
+
+# cumincidence
+println("--- Cumulative incidence functions ---")
+println("error:\t", string(errors_cumincidence.mu[:,2]), "\t(", string(errors_cumincidence.sd[:,2]), ")")
+println("inband:\t", string(mean(isinbands_cumincidence.mu[:,2])), "\t(", string(mean(isinbands_cumincidence.sd[:,2])), ")")
+println("bandwidth:\t", string(mean(bandwidth_cumincidence.mu[:,2])), "\t(", string(mean(bandwidth_cumincidence.sd[:,2])), ")")
 println()
 
 ##########
-# Run tests: RestaurantFranchise estimators - conditional method
+# Run tests: restaurant array estimators
 ##########
 
 # initialize diagnostics vectors
-test_dishes = zeros(num_tests)
-test_theta = zeros(num_tests)
-test_logalpha = zeros(num_tests)
+dishes = zeros(num_tests)
+theta = zeros(num_tests)
+alpha = zeros(num_tests)
 
 # initialize error vectors
-test_survival_errors = zeros(num_tests)
-test_incidence_errors = zeros(D, num_tests)
-test_cumincidence_errors = zeros(D, num_tests)
+errors_survival = zeros(num_tests, 2)
+errors_incidence = zeros(D, num_tests, 2)
+errors_cumincidence = zeros(D, num_tests, 2)
 
 # initialize credible bands inclusion
-isinbands_survival = zeros(num_tests)
-isinbands_incidence = zeros(D, num_tests)
-isinbands_cumincidence = zeros(D, num_tests)
+isinbands_survival = zeros(num_tests, 2)
+isinbands_incidence = zeros(D, num_tests, 2)
+isinbands_cumincidence = zeros(D, num_tests, 2)
 
 # initialize credible bands width
-bandwidth_survival = zeros(num_tests)
-bandwidth_incidence = zeros(D, num_tests)
-bandwidth_cumincidence = zeros(D, num_tests)
+bandwidth_survival = zeros(num_tests, 2)
+bandwidth_incidence = zeros(D, num_tests, 2)
+bandwidth_cumincidence = zeros(D, num_tests, 2)
 
 # loop on tests
-for test in 1:num_tests
+for test in range(1, num_tests)
 
     # set seed for reproducibility
     seed!(test)
 
     # create synthetic dataset
-    crd = independent_dataset(N, true_models)
-    # crd = independent_dataset(N, true_models; censoring)
+    data = independent_dataset(N, true_models)
 
-    # create RestaurantFranchise
-    # rf = RestaurantFranchise(crd)
-    rf = RestaurantFranchise(crd; sigma = 0.25, sigma0 = 0.25)
+    # create Restaurants
+    # rf = Restaurants(data, hierarchical = false)
+    rf = Restaurants(data, sigma = 0.25, sigma0 = 0.25, hierarchical = false)
 
-    # initialize conditional estimators
-    hazard_est_ = HazardConditional(times, D)
-    survival_est_ = SurvivalConditional(times)
-
-    # estimators vector (conditional)
-    marginal_estimators = Array{MarginalEstimator}(undef, 0)
-    conditional_estimators = [hazard_est_, survival_est_]
-
-    # chain parameters (conditional)
-    num_samples = (n = 1000, m = 20)
-    burn_in = 10000
-    
     # run chain
-    dgn = Gibbs(rf, marginal_estimators, conditional_estimators, num_samples; burn_in = burn_in, thin = 25)
+    marginal_estimator, conditional_estimator, params = posterior_sampling(rf, nothing, nsamples, times = times, burn_in = burn_in, nsamples_crms = 10)
 
     # diagnostics
-    test_dishes[test] = mean(dgn.dishes_number[burn_in+1:end])
-    test_theta[test] = mean(dgn.theta[burn_in+1:end])
-    test_logalpha[test] = mean(dgn.logalpha[burn_in+1:end])
+    dishes[test] = mean(params.dishes_number[burn_in+thin:thin:end])
+    theta[test] = mean(params.theta[burn_in+thin:thin:end])
+    alpha[test] = mean(exp.(params.logalpha[burn_in+thin:thin:end]))
+
+    ### marginal estimator
 
     # posterior survival function
-    survival_post = estimate(survival_est_)
-    test_survival_errors[test] = survival_error(survival_post, survival_true)
-
-    # credible bands
-    (survival_lower, survival_upper) = credible_intervals(survival_est_; lower = 0.05, upper = 0.95)
-    isinbands_survival[test] = sum(survival_lower .<= survival_true .<= survival_upper) / length(times)
-    bandwidth_survival[test] = maximum(survival_upper .- survival_lower)
+    (survival_post, survival_lower, survival_upper) = estimate_survival(marginal_estimator)
+    errors_survival[test, 1] = error_survival(survival_post, survival_true)
+    isinbands_survival[test, 1] = sum(survival_lower .<= survival_true .<= survival_upper) / length(times)
+    bandwidth_survival[test, 1] = maximum(survival_upper .- survival_lower)
     
     # posterior incidence function
-    incidence_post = estimate(hazard_est_, survival_est_)
-    test_incidence_errors[:,test] = incidence_error(incidence_post, incidence_true, times)
-
-    # credible bands
-    (incidence_lower, incidence_upper) = credible_intervals(hazard_est_, survival_est_; lower = 0.05, upper = 0.95)
-    isinbands_incidence[:,test] = [sum(incidence_lower[:,d] .<= incidence_true[:,d] .<= incidence_upper[:,d]) for d in 1:D] ./ length(times)
-    bandwidth_incidence[:,test] = [maximum(incidence_upper[:,d] .- incidence_lower[:,d]) for d in 1:D]
+    (incidence_post, incidence_lower, incidence_upper) = estimate_incidence(marginal_estimator)
+    errors_incidence[:, test, 1] = error_incidence(incidence_post, incidence_true, times)
+    isinbands_incidence[:, test, 1] = [sum(incidence_lower[:,d] .<= incidence_true[:,d] .<= incidence_upper[:,d]) for d in range(1, D)] ./ length(times)
+    bandwidth_incidence[:, test, 1] = [maximum(incidence_upper[:,d] .- incidence_lower[:,d]) for d in range(1, D)]
 
     # posterior cumulative incidence functions
-    cumincidence_post = estimate(hazard_est_, survival_est_; cum = true)
-    test_cumincidence_errors[:,test] = cumincidence_error(cumincidence_post, cumincidence_true)
+    (cumincidence_post, cumincidence_lower, cumincidence_upper) = estimate_incidence(marginal_estimator, cum = true)
+    errors_cumincidence[:, test,1] = error_cumincidence(cumincidence_post, cumincidence_true)
+    isinbands_cumincidence[:, test,1] = [sum(cumincidence_lower[:,d] .<= cumincidence_true[:,d] .<= cumincidence_upper[:,d]) for d in range(1, D)] ./ length(times)
+    bandwidth_cumincidence[:, test,1] = [maximum(cumincidence_upper[:,d] .- cumincidence_lower[:,d]) for d in range(1, D)]
 
-    # credible bands
-    (cumincidence_lower, cumincidence_upper) = credible_intervals(hazard_est_, survival_est_; cum = true, lower = 0.05, upper = 0.95)
-    isinbands_cumincidence[:,test] = [sum(cumincidence_lower[:,d] .<= cumincidence_true[:,d] .<= cumincidence_upper[:,d]) for d in 1:D] ./ length(times)
-    bandwidth_cumincidence[:,test] = [maximum(cumincidence_upper[:,d] .- cumincidence_lower[:,d]) for d in 1:D]
+    ### conditional estimator
+
+    # posterior survival function
+    (survival_post, survival_lower, survival_upper) = estimate_survival(conditional_estimator)
+    errors_survival[test, 2] = error_survival(survival_post, survival_true)
+    isinbands_survival[test, 2] = sum(survival_lower .<= survival_true .<= survival_upper) / length(times)
+    bandwidth_survival[test, 2] = maximum(survival_upper .- survival_lower)
+    
+    # posterior incidence function
+    (incidence_post, incidence_lower, incidence_upper) = estimate_incidence(conditional_estimator)
+    errors_incidence[:, test, 2] = error_incidence(incidence_post, incidence_true, times)
+    isinbands_incidence[:, test, 2] = [sum(incidence_lower[:,d] .<= incidence_true[:,d] .<= incidence_upper[:,d]) for d in range(1, D)] ./ length(times)
+    bandwidth_incidence[:, test, 2] = [maximum(incidence_upper[:,d] .- incidence_lower[:,d]) for d in range(1, D)]
+
+    # posterior cumulative incidence functions
+    (cumincidence_post, cumincidence_lower, cumincidence_upper) = estimate_incidence(conditional_estimator, cum = true)
+    errors_cumincidence[:, test, 2] = error_cumincidence(cumincidence_post, cumincidence_true)
+    isinbands_cumincidence[:, test, 2] = [sum(cumincidence_lower[:,d] .<= cumincidence_true[:,d] .<= cumincidence_upper[:,d]) for d in range(1, D)] ./ length(times)
+    bandwidth_cumincidence[:, test, 2] = [maximum(cumincidence_upper[:,d] .- cumincidence_lower[:,d]) for d in range(1, D)]
 
     # print output
     println("Completed test ", string(test))
 
 end
 
+# compute means and standard deviations
+errors_survival = mean_std(errors_survival, 1)
+errors_incidence = mean_std(errors_incidence, 2)
+errors_cumincidence = mean_std(errors_cumincidence, 2)
+
+# compute means and standard deviations
+isinbands_survival = mean_std(isinbands_survival, 1)
+isinbands_incidence = mean_std(isinbands_incidence, 2)
+isinbands_cumincidence = mean_std(isinbands_cumincidence, 2)
+
+# compute means and standard deviations
+bandwidth_survival = mean_std(bandwidth_survival, 1)
+bandwidth_incidence = mean_std(bandwidth_incidence, 2)
+bandwidth_cumincidence = mean_std(bandwidth_cumincidence, 2)
+
 ##########
-# Tests results: RestaurantFranchise estimators - conditional method
+# Tests results: restaurant array estimators
 ##########
 
-println("### RestaurantFranchise estimators - conditional method ###")
+println("### Restaurant array estimators ###")
 println()
 
-# diagnostics
-println("--- Diagnostics ---")
-println("Dishes: ", mean(test_dishes))
-println("Theta: ", mean(test_theta))
-println("Alpha: ", mean(exp.(test_logalpha)))
+# parameters
+println("--- Parameters ---")
+println("Dishes:\t", mean(dishes))
+println("Theta:\t", mean(theta))
+println("Alpha:\t", mean(alpha))
+println()
+
+println("### marginal method")
 println()
 
 # survival
 println("--- Survival function ---")
-println("error: ", string(mean(test_survival_errors)))
-println("inband: ", string(mean(isinbands_survival)))
-println("bandwidth: ", string(mean(bandwidth_survival)))
+println("error:\t", string(errors_survival.mu[1]), "\t(", string(errors_survival.sd[1]), ")")
+println("inband:\t", string(isinbands_survival.mu[1]), "\t(", string(isinbands_survival.sd[1]), ")")
+println("bandwidth:\t", string(bandwidth_survival.mu[1]), "\t(", string(bandwidth_survival.sd[1]), ")")
 println()
 
 # incidence
 println("--- Incidence functions ---")
-test_incidence_errors = vec(mean(test_incidence_errors, dims = 2))
-println("error: ", string(test_incidence_errors))
-println("inband: ", string(mean(isinbands_incidence)))
-println("bandwidth: ", string(mean(bandwidth_incidence)))
+println("error:\t", string(errors_incidence.mu[:,1]), "\t(", string(errors_incidence.sd[:,1]), ")")
+println("inband:\t", string(mean(isinbands_incidence.mu[:,1])), "\t(", string(mean(isinbands_incidence.sd[:,1])), ")")
+println("bandwidth:\t", string(mean(bandwidth_incidence.mu[:,1])), "\t(", string(mean(bandwidth_incidence.sd[:,1])), ")")
 println()
 
 # cumincidence
 println("--- Cumulative incidence functions ---")
-test_cumincidence_errors = vec(mean(test_cumincidence_errors, dims = 2))
-println("error: ", string(test_cumincidence_errors))
-println("inband: ", string(mean(isinbands_cumincidence)))
-println("bandwidth: ", string(mean(bandwidth_cumincidence)))
+println("error:\t", string(errors_cumincidence.mu[:,1]), "\t(", string(errors_cumincidence.sd[:,1]), ")")
+println("inband:\t", string(mean(isinbands_cumincidence.mu[:,1])), "\t(", string(mean(isinbands_cumincidence.sd[:,1])), ")")
+println("bandwidth:\t", string(mean(bandwidth_cumincidence.mu[:,1])), "\t(", string(mean(bandwidth_cumincidence.sd[:,1])), ")")
 println()
 
-##########
-# Run tests: RestaurantArray estimators - marginal method
-##########
-
-# initialize diagnostics vectors
-test_dishes = zeros(num_tests)
-test_theta = zeros(num_tests)
-test_logalpha = zeros(num_tests)
-
-# initialize error vectors
-test_survival_errors = zeros(num_tests)
-test_incidence_errors = zeros(D, num_tests)
-test_cumincidence_errors = zeros(D, num_tests)
-
-# initialize credible bands inclusion
-isinbands_survival = zeros(num_tests)
-isinbands_incidence = zeros(D, num_tests)
-isinbands_cumincidence = zeros(D, num_tests)
-
-# initialize credible bands width
-bandwidth_survival = zeros(num_tests)
-bandwidth_incidence = zeros(D, num_tests)
-bandwidth_cumincidence = zeros(D, num_tests)
-
-# loop on tests
-for test in 1:num_tests
-
-    # set seed for reproducibility
-    seed!(test)
-
-    # create synthetic dataset
-    crd = independent_dataset(N, true_models)
-    # crd = independent_dataset(N, true_models; censoring)
-
-    # create RestaurantArray
-    # rf = RestaurantArray(crd)
-    rf = RestaurantArray(crd; sigma = 0.25)
-    
-    # initialize marginal estimators
-    survival_est = SurvivalMarginal(rf, times)
-    incidence_est = IncidenceMarginal(rf, times)
-    
-    # estimators vector (marginal)
-    marginal_estimators = [survival_est, incidence_est]
-    conditional_estimators = Array{ConditionalEstimator}(undef, 0)
-    
-    # chain parameters (marginal)
-    num_samples = (n = 2500, m = 0)
-    burn_in = 10000
-    
-    # run chain
-    dgn = Gibbs(rf, marginal_estimators, conditional_estimators, num_samples; burn_in = burn_in)
-
-    # diagnostics
-    test_dishes[test] = mean(dgn.dishes_number[burn_in+1:end])
-    test_theta[test] = mean(dgn.theta[burn_in+1:end])
-    test_logalpha[test] = mean(dgn.logalpha[burn_in+1:end])
-
-    # posterior survival function
-    survival_post = estimate(survival_est)
-    test_survival_errors[test] = survival_error(survival_post, survival_true)
-
-    # credible bands
-    (survival_lower, survival_upper) = credible_intervals(survival_est; lower = 0.05, upper = 0.95)
-    isinbands_survival[test] = sum(survival_lower .<= survival_true .<= survival_upper) / length(times)
-    bandwidth_survival[test] = maximum(survival_upper .- survival_lower)
-
-    # posterior incidence function
-    incidence_post = estimate(incidence_est, survival_est)
-    test_incidence_errors[:,test] = incidence_error(incidence_post, incidence_true, times)
-
-    # credible bands
-    (incidence_lower, incidence_upper) = credible_intervals(incidence_est, survival_est; lower = 0.05, upper = 0.95)
-    isinbands_incidence[:,test] = [sum(incidence_lower[:,d] .<= incidence_true[:,d] .<= incidence_upper[:,d]) for d in 1:D] ./ length(times)
-    bandwidth_incidence[:,test] = [maximum(incidence_upper[:,d] .- incidence_lower[:,d]) for d in 1:D]
-
-    # posterior cumulative incidence functions
-    cumincidence_post = estimate(incidence_est, survival_est; cum = true)
-    test_cumincidence_errors[:,test] = cumincidence_error(cumincidence_post, cumincidence_true)
-
-    # credible bands
-    (cumincidence_lower, cumincidence_upper) = credible_intervals(incidence_est, survival_est; cum = true, lower = 0.05, upper = 0.95)
-    isinbands_cumincidence[:,test] = [sum(cumincidence_lower[:,d] .<= cumincidence_true[:,d] .<= cumincidence_upper[:,d]) for d in 1:D] ./ length(times)
-    bandwidth_cumincidence[:,test] = [maximum(cumincidence_upper[:,d] .- cumincidence_lower[:,d]) for d in 1:D]
-
-    # print output
-    println("Completed test ", string(test))
-
-end
-
-##########
-# Tests results: RestaurantArray estimators - marginal method
-##########
-
-println("### RestaurantArray estimators - marginal method ###")
-println()
-
-# diagnostics
-println("--- Diagnostics ---")
-println("Dishes: ", mean(test_dishes))
-println("Theta: ", mean(test_theta))
-println("Alpha: ", mean(exp.(test_logalpha)))
+println("### conditional method")
 println()
 
 # survival
 println("--- Survival function ---")
-println("error: ", string(mean(test_survival_errors)))
-println("inband: ", string(mean(isinbands_survival)))
-println("bandwidth: ", string(mean(bandwidth_survival)))
+println("error:\t", string(errors_survival.mu[2]), "\t(", string(errors_survival.sd[2]), ")")
+println("inband:\t", string(isinbands_survival.mu[2]), "\t(", string(isinbands_survival.sd[2]), ")")
+println("bandwidth:\t", string(bandwidth_survival.mu[2]), "\t(", string(bandwidth_survival.sd[2]), ")")
 println()
 
 # incidence
 println("--- Incidence functions ---")
-test_incidence_errors = vec(mean(test_incidence_errors, dims = 2))
-println("error: ", string(test_incidence_errors))
-println("inband: ", string(mean(isinbands_incidence)))
-println("bandwidth: ", string(mean(bandwidth_incidence)))
+println("error:\t", string(errors_incidence.mu[:,2]), "\t(", string(errors_incidence.sd[:,2]), ")")
+println("inband:\t", string(mean(isinbands_incidence.mu[:,2])), "\t(", string(mean(isinbands_incidence.sd[:,2])), ")")
+println("bandwidth:\t", string(mean(bandwidth_incidence.mu[:,2])), "\t(", string(mean(bandwidth_incidence.sd[:,2])), ")")
 println()
 
 # cumincidence
 println("--- Cumulative incidence functions ---")
-test_cumincidence_errors = vec(mean(test_cumincidence_errors, dims = 2))
-println("error: ", string(test_cumincidence_errors))
-println("inband: ", string(mean(isinbands_cumincidence)))
-println("bandwidth: ", string(mean(bandwidth_cumincidence)))
-println()
-
-##########
-# Run tests: RestaurantArray estimators - conditional method
-##########
-
-# initialize diagnostics vectors
-test_dishes = zeros(num_tests)
-test_theta = zeros(num_tests)
-test_logalpha = zeros(num_tests)
-
-# initialize error vectors
-test_survival_errors = zeros(num_tests)
-test_incidence_errors = zeros(D, num_tests)
-test_cumincidence_errors = zeros(D, num_tests)
-
-# initialize credible bands inclusion
-isinbands_survival = zeros(num_tests)
-isinbands_incidence = zeros(D, num_tests)
-isinbands_cumincidence = zeros(D, num_tests)
-
-# initialize credible bands width
-bandwidth_survival = zeros(num_tests)
-bandwidth_incidence = zeros(D, num_tests)
-bandwidth_cumincidence = zeros(D, num_tests)
-
-# loop on tests
-for test in 1:num_tests
-
-    # set seed for reproducibility
-    seed!(test)
-
-    # create synthetic dataset
-    crd = independent_dataset(N, true_models)
-    # crd = independent_dataset(N, true_models; censoring)
-
-    # create RestaurantArray
-    # rf = RestaurantArray(crd)
-    rf = RestaurantArray(crd; sigma = 0.25)
-
-    # initialize conditional estimators
-    hazard_est_ = HazardConditional(times, D)
-    survival_est_ = SurvivalConditional(times)
-
-    # estimators vector (conditional)
-    marginal_estimators = Array{MarginalEstimator}(undef, 0)
-    conditional_estimators = [hazard_est_, survival_est_]
-
-    # chain parameters (conditional)
-    num_samples = (n = 1000, m = 20)
-    burn_in = 10000
-    
-    # run chain
-    dgn = Gibbs(rf, marginal_estimators, conditional_estimators, num_samples; burn_in = burn_in, thin = 25)
-
-    # diagnostics
-    test_dishes[test] = mean(dgn.dishes_number[burn_in+1:end])
-    test_theta[test] = mean(dgn.theta[burn_in+1:end])
-    test_logalpha[test] = mean(dgn.logalpha[burn_in+1:end])
-
-    # posterior survival function
-    survival_post = estimate(survival_est_)
-    test_survival_errors[test] = survival_error( survival_post, survival_true)
-
-    # credible bands
-    (survival_lower, survival_upper) = credible_intervals(survival_est_; lower = 0.05, upper = 0.95)
-    isinbands_survival[test] = sum(survival_lower .<= survival_true .<= survival_upper) / length(times)
-    bandwidth_survival[test] = maximum(survival_upper .- survival_lower)
-
-    # posterior incidence function
-    incidence_post = estimate(hazard_est_, survival_est_)
-    test_incidence_errors[:,test] = incidence_error(incidence_post, incidence_true, times)
-
-    # credible bands
-    (incidence_lower, incidence_upper) = credible_intervals(hazard_est_, survival_est_; lower = 0.05, upper = 0.95)
-    isinbands_incidence[:,test] = [sum(incidence_lower[:,d] .<= incidence_true[:,d] .<= incidence_upper[:,d]) for d in 1:D] ./ length(times)
-    bandwidth_incidence[:,test] = [maximum(incidence_upper[:,d] .- incidence_lower[:,d]) for d in 1:D]
-
-    # posterior cumulative incidence functions
-    cumincidence_post = estimate(hazard_est_, survival_est_; cum = true)
-    test_cumincidence_errors[:,test] = cumincidence_error(cumincidence_post, cumincidence_true)
-
-    # credible bands
-    (cumincidence_lower, cumincidence_upper) = credible_intervals(hazard_est_, survival_est_; cum = true, lower = 0.05, upper = 0.95)
-    isinbands_cumincidence[:,test] = [sum(cumincidence_lower[:,d] .<= cumincidence_true[:,d] .<= cumincidence_upper[:,d]) for d in 1:D] ./ length(times)
-    bandwidth_cumincidence[:,test] = [maximum(cumincidence_upper[:,d] .- cumincidence_lower[:,d]) for d in 1:D]
-
-    # print output
-    println("Completed test ", string(test))
-
-end
-
-##########
-# Tests results: RestaurantArray estimators - conditional method
-##########
-
-println("### RestaurantArray estimators - conditional method ###")
-println()
-
-# diagnostics
-println("--- Diagnostics ---")
-println("Dishes: ", mean(test_dishes))
-println("Theta: ", mean(test_theta))
-println("Alpha: ", mean(exp.(test_logalpha)))
-println()
-
-# survival
-println("--- Survival function ---")
-println("error: ", string(mean(test_survival_errors)))
-println("inband: ", string(mean(isinbands_survival)))
-println("bandwidth: ", string(mean(bandwidth_survival)))
-println()
-
-# incidence
-println("--- Incidence functions ---")
-test_incidence_errors = vec(mean(test_incidence_errors, dims = 2))
-println("error: ", string(test_incidence_errors))
-println("inband: ", string(mean(isinbands_incidence)))
-println("bandwidth: ", string(mean(bandwidth_incidence)))
-println()
-
-# cumincidence
-println("--- Cumulative incidence functions ---")
-test_cumincidence_errors = vec(mean(test_cumincidence_errors, dims = 2))
-println("error: ", string(test_cumincidence_errors))
-println("inband: ", string(mean(isinbands_cumincidence)))
-println("bandwidth: ", string(mean(bandwidth_cumincidence)))
+println("error:\t", string(errors_cumincidence.mu[:,2]), "\t(", string(errors_cumincidence.sd[:,2]), ")")
+println("inband:\t", string(mean(isinbands_cumincidence.mu[:,2])), "\t(", string(mean(isinbands_cumincidence.sd[:,2])), ")")
+println("bandwidth:\t", string(mean(bandwidth_cumincidence.mu[:,2])), "\t(", string(mean(bandwidth_cumincidence.sd[:,2])), ")")
 println()

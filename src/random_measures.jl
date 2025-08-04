@@ -1,316 +1,255 @@
 """
-    struct HierarchicalCRM
+    struct CRM
 
 """
-struct HierarchicalCRM
-
-    # dimensions
-    D::Int64        # number of diseases
-    H::Int64        # number of jumps
+struct CRM
 
     # locations
     locations::Vector{Float64} 
 
     # jumps heights
-    jumps_base::Vector{Float64}     # jumps in base measure
-    jumps::Matrix{Float64}          # jumps in dependent measures
+    jumps::Vector{Float64}
 
-end # struct
-
-"""
-    struct CRMArray
+end # CRM
 
 """
-struct CRMArray
-
-    # dimensions
-    D::Int64        # number of diseases
-    H::Int64        # number of jumps
-
-    # locations
-    locations::Vector{Float64} 
-
-    # jumps heights
-    jumps::Vector{Float64} 
-
-    # lookup vector
-    jump_disease::Vector{Int64}    # diseases indices (k), disease index per jump
-
-end # struct
+    sample_measures(rf::Restaurants, Tmax::Float64)
 
 """
-    sample_measures(rf::RestaurantFranchise)
+function sample_measures(rf::Restaurants, Tmax::Float64)
 
-"""
-function sample_measures(rf::RestaurantFranchise)
+    if rf.hierarchical      # restaurant franchise
 
-    # sample base measure
-    locations, jumps_base = sample_base_measure(rf)
+        # sample base measure
+        base_measure = sample_base_measure(rf, Tmax)
 
-    # sample dependent measures
-    jumps = sample_dependent_measures(rf, locations, jumps_base)
+        # sample dependent measures
+        return sample_dependent_measures(rf, base_measure)
 
-    # create HierarchicalCRM
-    return HierarchicalCRM(rf.D, length(locations), locations, jumps_base, jumps)
+    else    # restaurant array
+
+        return sample_independent_measures(rf, Tmax)
+
+    end
 
 end # sample_measures
 
 """
-    sample_measures(rf::RestaurantArray)
+    sample_base_measure(rf::Restaurants, Tmax::Float64; eps::Float64 = 1.0e-4, maxIter::Int64 = 1000)
 
 """
-function sample_measures(rf::RestaurantArray)
-
-    # sample measures
-    locations, jumps, jump_disease = sample_independent_measures(rf)
-
-    # create CRMArray
-    return CRMArray(rf.D, length(locations), locations, jumps, jump_disease)
-
-end # sample_measures
-
-"""
-    sample_base_measure(rf::RestaurantFranchise)
-
-"""
-function sample_base_measure(rf::RestaurantFranchise)
+function sample_base_measure(rf::Restaurants, Tmax::Float64; eps::Float64 = 1.0e-4, maxIter::Int64 = 1000)
 
     # initialize vectors
     locations = copy(rf.Xstar)
-    jumps_base = zeros(length(rf.r))
+    jumps = zeros(length(rf.r))
 
     # loop on dishes
     for (dish, rdish) in enumerate(rf.r)
 
-        if rdish == 0       # no tables at dish
-            continue
-        end
+        # no tables at dish
+        if rdish == 0 continue end
 
         # sample jump height
-        jumps_base[dish] = sample_jump(rdish, rf.beta0, rf.sigma0; posterior = rf.D * psi(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma))
+        jumps[dish] = sample_jump(rdish, rf.beta0, rf.sigma0, posterior = rf.D * psi(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma))
 
     end
 
-    # truncation parameter
-    eps = 1.0e-3
-
     # initialize total mass
-    sumjumps = sum(jumps_base)
-
-    # initialize logjump
-    logjump = -1.0
+    sumjumps, numjumps = 0.0, 0
 
     # initialize standard Poisson process
-    spp = 0.0
+    logjump, spp = -1.0, 0.0
 
-    while spp <= rf.theta * jumps_measure(log(eps * sumjumps), rf.beta0, rf.sigma0)
+    while spp <= tail_integral(log(eps * sumjumps), rf.beta0, rf.sigma0) && numjumps < maxIter
 
         # update Poisson process
-        spp += rand(Exponential())
+        spp += rand(Exponential()) / (rf.theta * Tmax)
 
         # sample location
-        atom = rand(rf.base_measure)
+        atom = rand() * Tmax
 
         # precompute KernelInt
-        if isnothing(rf.CoxProd)    # no regression model
-            KInt = rf.alpha * KernelInt(atom, rf.T, rf.eta)
-        else    # regression model
-            KInt = rf.alpha * KernelInt(atom, rf.T, rf.CoxProd, rf.eta)
-        end
+        KInt = rf.alpha * KernelInt(atom, rf.T, rf.CoxProd, rf.kappa)
 
         # define functions
-        f(logh::Float64) = jumps_measure(logh, rf.beta0, rf.sigma0; posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
-        fp(logh::Float64) = jumps_measure_grad(logh, rf.beta0, rf.sigma0; posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+        f(logh::Float64) = tail_integral(logh, rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+        fp(logh::Float64) = tail_integral_grad(logh, rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
 
         # algorithm starting point
         if logjump >= 0.0 logjump = -1.0 end
-        while rf.theta * f(logjump) <= spp
+        while f(logjump) <= spp
             logjump *= 2.0
         end
 
         # solve equation
-        logjump = newton(spp / rf.theta, f, fp, logjump)
+        logjump = newton(spp, f, fp, logjump)
         jump = exp(logjump)
 
         # append atom and jump
         append!(locations, atom)
-        append!(jumps_base, jump)
+        append!(jumps, jump)
 
         # update total mass
         sumjumps += jump
+        numjumps += 1
 
     end
 
-    return (locations, jumps_base)
+    return CRM(locations, jumps)
 
 end # sample_base_measure
 
 """
-    sample_dependent_measures(rf::RestaurantFranchise, locations::Vector{Float64}, jumps_base::Vector{Float64})
+    sample_dependent_measures(rf::Restaurants, base_measure::CRM; eps::Float64 = 1.0e-4, maxIter::Int64 = 1000)
 
 """
-function sample_dependent_measures(rf::RestaurantFranchise, locations::Vector{Float64}, jumps_base::Vector{Float64})
+function sample_dependent_measures(rf::Restaurants, base_measure::CRM; eps::Float64 = 1.0e-4, maxIter::Int64 = 1000)
 
     # initialize matrix
-    jumps = zeros(length(locations), rf.D)
+    jumps = zeros(length(base_measure.locations), rf.D)
 
     # loop on tables
     for (table, qtable) in enumerate(rf.q)
 
-        if qtable == 0  # no customers at table
-            continue
-        end
+        # no customers at table
+        if qtable == 0 continue end
 
         # retrieve dish and restaurant
         dish = rf.table_dish[table]
         rest = rf.table_rest[table]
 
         # sample jump height
-        jumps[dish, rest] += sample_jump(qtable, rf.beta, rf.sigma; posterior = rf.alpha * rf.KInt[dish])
+        jumps[dish, rest] += sample_jump(qtable, rf.beta, rf.sigma, posterior = rf.alpha * rf.KInt[dish])
 
     end
 
     # base random measure
-    mass_base = sum(jumps_base)
-    baseCRM = Categorical(jumps_base / mass_base)
+    mass_base = sum(base_measure.jumps)
+    baseCRM = Categorical(base_measure.jumps / mass_base)
 
     # loop on dependent measures
-    for d in 1:rf.D
-
-        # truncation parameter
-        eps = 1.0e-3
+    for rest in axes(jumps, 2)
 
         # initialize total mass
-        sumjumps = sum(jumps[:,d])
-
-        # initialize logjump
-        logjump = -1.0
+        sumjumps, numjumps = 0.0, 0
 
         # initialize standard Poisson process
-        spp = 0.0
+        logjump, spp = -1.0, 0.0
 
-        while spp <= mass_base * jumps_measure(log(eps * sumjumps), rf.beta, rf.sigma)
+        while spp <= tail_integral(log(eps * sumjumps), rf.beta, rf.sigma) && numjumps < maxIter
 
             # update Poisson process
-            spp += rand(Exponential())
+            spp += rand(Exponential()) / mass_base
 
             # sample location
             atom = rand(baseCRM)
 
             # precompute KernelInt
-            if isnothing(rf.CoxProd)    # no regression model
-                KInt = rf.alpha * KernelInt(locations[atom], rf.T, rf.eta)
-            else    # regression model
-                KInt = rf.alpha * KernelInt(locations[atom], rf.T, rf.CoxProd, rf.eta)
-            end
+            KInt = rf.alpha * KernelInt(base_measure.locations[atom], rf.T, rf.CoxProd, rf.kappa)
 
             # define functions
-            f(logh::Float64) = jumps_measure(logh, rf.beta, rf.sigma; posterior = KInt)
-            fp(logh::Float64) = jumps_measure_grad(logh, rf.beta, rf.sigma; posterior = KInt)
+            f(logh::Float64) = tail_integral(logh, rf.beta, rf.sigma, posterior = KInt)
+            fp(logh::Float64) = tail_integral_grad(logh, rf.beta, rf.sigma, posterior = KInt)
 
             # algorithm starting point
             if logjump >= 0.0 logjump = -1.0 end
-            while mass_base * f(logjump) <= spp
+            while f(logjump) <= spp
                 logjump *= 2.0
             end
 
             # solve equation
-            logjump = newton(spp / mass_base, f, fp, logjump)
+            logjump = newton(spp, f, fp, logjump)
             jump = exp(logjump)
 
             # update jump at atom
-            jumps[atom, d] += jump
+            jumps[atom, rest] += jump
 
             # update total mass
             sumjumps += jump
+            numjumps += 1
 
         end
 
     end
 
-    return jumps
+    return [CRM(base_measure.locations, jumpsvec) for jumpsvec in eachcol(jumps)]
 
 end # sample_dependent_measures
 
 """
-    sample_independent_measures(rf::RestaurantArray)
+    sample_independent_measures(rf::Restaurants, Tmax::Float64; eps::Float64 = 1.0e-4, maxIter::Int64 = 1000)
 
 """
-function sample_independent_measures(rf::RestaurantArray)
+function sample_independent_measures(rf::Restaurants, Tmax::Float64; eps::Float64 = 1.0e-4, maxIter::Int64 = 1000)
 
-    # initialize vectors
-    locations = copy(rf.Xstar)
-    jumps = zeros(length(rf.n))
-    jump_disease = copy(rf.table_rest)
-
-    # loop on dishes
-    for (table, ntable) in enumerate(rf.n)
-
-        if ntable == 0  # no customers at table
-            continue
-        end
-
-        # sample jump height
-        jumps[table] = sample_jump(ntable, rf.beta, rf.sigma; posterior = rf.alpha * rf.KInt[table])
-
-    end
+    # initialize vector
+    crms = Vector{CRM}(undef, rf.D)
 
     # loop on independent measures
-    for d in 1:rf.D
+    for d in eachindex(crms)
 
-        # truncation parameter
-        eps = 1.0e-3
+        # initialize vectors
+        locations = copy(rf.Xstar)
+        jumps = zeros(length(rf.n))
+
+        # loop on dishes
+        for (table, ntable) in enumerate(rf.n)
+
+            # no customers at table
+            if ntable == 0 || rf.table_rest[table] != d continue end
+
+            # sample jump height
+            jumps[table] = sample_jump(ntable, rf.beta, rf.sigma, posterior = rf.alpha * rf.KInt[table])
+
+        end
 
         # initialize total mass
-        sumjumps = sum(jumps)
-
-        # initialize logjump
-        logjump = -1.0
+        sumjumps, numjumps = 0.0, 0
 
         # initialize standard Poisson process
-        spp = 0.0
+        logjump, spp = -1.0, 0.0
 
-        while spp <= rf.theta * jumps_measure(log(eps * sumjumps), rf.beta, rf.sigma)
+        while spp <= tail_integral(log(eps * sumjumps), rf.beta, rf.sigma) && numjumps < maxIter
 
             # update Poisson process
-            spp += rand(Exponential())
+            spp += rand(Exponential()) / (rf.theta * Tmax)
 
             # sample location
-            atom = rand(rf.base_measure)
+            atom = rand() * Tmax
 
             # precompute KernelInt
-            if isnothing(rf.CoxProd)    # no regression model
-                KInt = rf.alpha * KernelInt(atom, rf.T, rf.eta)
-            else    # regression model
-                KInt = rf.alpha * KernelInt(atom, rf.T, rf.CoxProd, rf.eta)
-            end
+            KInt = rf.alpha * KernelInt(atom, rf.T, rf.CoxProd, rf.kappa)
 
             # define functions
-            f(logh::Float64) = jumps_measure(logh, rf.beta, rf.sigma; posterior = KInt)
-            fp(logh::Float64) = jumps_measure_grad(logh, rf.beta, rf.sigma; posterior = KInt)
+            f(logh::Float64) = tail_integral(logh, rf.beta, rf.sigma, posterior = KInt)
+            fp(logh::Float64) = tail_integral_grad(logh, rf.beta, rf.sigma, posterior = KInt)
 
             # algorithm starting point
             if logjump >= 0.0 logjump = -1.0 end
-            while rf.theta * f(logjump) <= spp
+            while f(logjump) <= spp
                 logjump *= 2.0
             end
 
             # solve equation
-            logjump = newton(spp / rf.theta, f, fp, logjump)
+            logjump = newton(spp, f, fp, logjump)
             jump = exp(logjump)
 
             # append atom and jump
             append!(locations, atom)
             append!(jumps, jump)
-            append!(jump_disease, d)
 
             # update total mass
             sumjumps += jump
+            numjumps += 1
 
         end
 
+        # create CRM
+        crms[d] = CRM(locations, jumps)
+
     end
 
-    return (locations, jumps, jump_disease)
+    return crms
 
 end # sample_independent_measures

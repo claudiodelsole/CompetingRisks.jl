@@ -1,6 +1,3 @@
-# export struct
-export LegendreIntegral
-
 # export functions
 export hazard, survival, integrate, integrate_trapz
 
@@ -22,44 +19,40 @@ survival(d::Type, t::Float64) where Type <: UnivariateDistribution = ccdf(d, t)
 """
 struct LegendreIntegral
 
-    # dimension
-    num_nodes::Int64
-
     # quadrature nodes and weights
     nodes::Vector{Float64}
     weights::Vector{Float64}
 
-    # explicit constructor
-    function LegendreIntegral( ; num_nodes::Int64 = 20)
-
-        # quadrature nodes and weights
-        nodes, weights = gausslegendre(num_nodes)
-
-        # create LegendreIntegral
-        return new(num_nodes, nodes, weights)
-
-    end # LegendreIntegral
-
-end # struct
+end # LegendreIntegral
 
 """
-    integrate(f::Function, legendre::LegendreIntegral; lower::Float64 = -1.0, upper::Float64 = 1.0)
+    function LegendreIntegral( ; num_nodes::Int64 = 5)
 
 """
-function integrate(f::Function, legendre::LegendreIntegral; lower::Float64 = -1.0, upper::Float64 = 1.0)
+function LegendreIntegral( ; num_nodes::Int64 = 5)
 
-    # retrieve domain length
-    length = upper - lower
+    # quadrature nodes and weights
+    nodes, weights = gausslegendre(num_nodes)
 
-    # rescale nodes
-    nodes = 0.5 * length * (legendre.nodes .+ 1.0) .+ lower
+    # create LegendreIntegral
+    return LegendreIntegral(nodes, weights)
+
+end # LegendreIntegral
+
+"""
+    integrate(f::Function, lower::Float64, upper::Float64; num_intvals::Int64 = 5)
+
+"""
+function integrate(f::Function, lower::Float64, upper::Float64; num_intvals::Int64 = 5)
+
+    # retrieve endpoints
+    endpoints = range(lower, upper, num_intvals + 1)
 
     # compute integral
     I = 0.0
-    for (weight, node) in zip(legendre.weights, nodes)
-        I += weight * f(node)
+    for (lower_, upper_) in zip(endpoints[begin:end-1], endpoints[begin+1:end])
+        I += integrate_legendre(f, lower_, upper_)
     end
-    I *= (0.5 * length)
 
     # return integral value
     return I
@@ -67,20 +60,44 @@ function integrate(f::Function, legendre::LegendreIntegral; lower::Float64 = -1.
 end # integrate
 
 """
-    integrate_trapz(f::Vector{Float64}, times::Vector{Float64}; cum::Bool = false)
+    integrate_legendre(f::Function, lower::Float64, upper::Float64)
 
 """
-function integrate_trapz(f::Vector{Float64}, times::Vector{Float64}; cum::Bool = false)
+function integrate_legendre(f::Function, lower::Float64, upper::Float64)
+
+    # retrieve domain half-length
+    length = 0.5 * (upper - lower)
+
+    # rescale nodes
+    nodes = length * (legendre.nodes .+ 1.0) .+ lower
+
+    # compute integral
+    I = 0.0
+    for (weight, node) in zip(legendre.weights, nodes)
+        I += weight * f(node)
+    end
+    I *= length
+
+    # return integral value
+    return I
+
+end # integrate
+
+"""
+    integrate_trapz(values::Vector{Float64}, times::Vector{Float64}; cum::Bool = false)
+
+"""
+function integrate_trapz(values::Vector{Float64}, times::Vector{Float64}; cum::Bool = false)
 
     # trapezoid integrals
-    trapz = (0.5 * f[begin:end-1] + 0.5 * f[begin+1:end]) .* diff(times)
+    trapz = 0.5 * (values[begin:end-1] + values[begin+1:end]) .* diff(times)
 
     # compute integrals
     if cum == true
         return pushfirst!(cumsum(trapz), 0.0)
-    else
-        return sum(trapz)
     end
+
+    return sum(trapz)
 
 end # integrate_trapz
 
@@ -92,13 +109,12 @@ function newton(value::Float64, f::Function, fp::Function, start::Float64)
 
     # algorithm parameters
     tol = 1.0e-8        # tolerance
-    maxIter = 50        # number of iterations
+    maxIter = 100       # number of iterations
 
     # initialize
-    sol = start
-    fsol = f(sol)
+    sol, fsol = start, f(start)
 
-    for _ in 1:maxIter
+    for _ in range(1, maxIter)
 
         # algorithm step
         sol -= (fsol - value) / fp(sol)
@@ -128,8 +144,8 @@ function sample_categorical(masses::Vector{Float64})
     th = rand() * sum(masses)
 
     # initialize variables
-    sum_masses = masses[begin]
     K = 1
+    sum_masses = masses[begin]
 
     # sample from categorical distribution
     while sum_masses < th
