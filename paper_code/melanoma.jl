@@ -6,7 +6,7 @@ import Random: seed!
 import DataFrames: DataFrame
 import StatsBase: counts
 import CSV: CSV
-import Plots: plot, plot!, vline!
+import Plots: plot, plot!, vline!, savefig
 
 ##########
 # Melanoma survival dataset
@@ -38,6 +38,7 @@ T = T./365.25
 data = DataFrame(T = T, Delta = Delta, predictor = predictor)
 
 # data summary
+println("# Data summary")
 println("Subjects per competing event: ", counts(data.Delta, 2))
 println("Censored observations: ", count(data.Delta .== 0))
 
@@ -65,39 +66,33 @@ R"library(cmprsk)"
 # Gibbs sampling algorithm
 ##########
 
-# kernel choice
-CompetingRisks.kernel(x::Float64, t::Float64, cp::Float64, kappa::Float64) = CompetingRisks.kernel_OU(x, t, cp, kappa)
-CompetingRisks.KernelInt(x::Float64, t::Float64, cp::Float64, kappa::Float64) = CompetingRisks.KernelInt_OU(x, t, cp, kappa)
-
-# resampling step
-CompetingRisks.resample_alpha(_::Restaurants) = (0.0, false)
-
-# create Restaurants
-# rf = Restaurants(data)
-rf = Restaurants(data, sigma = 0.25, sigma0 = 0.25)
-
-# chain parameters
-nsamples = 2000
+# create CompetingRisksModel
+# cmprsk = CompetingRisksModel(OrnsteinUhlenbeckKernel)
+cmprsk = CompetingRisksModel(OrnsteinUhlenbeckKernel, sigma = 0.25, sigma0 = 0.25, regression = true)
 
 # setup acceptance rates
-CompetingRisks.stdev_dishes[] = 0.5
-CompetingRisks.stdev_kappa[] = 2.0
+stdevs(dishes = 0.5, kernelpars = 2.0)
 
 # run chain
-marginal_estimator, conditional_estimator, params = posterior_sampling(rf, CoxModel(data), nsamples, times = times, burn_in = 5000)
+marginal_estimator, conditional_estimator, params = posterior_sampling(data, cmprsk, nsamples = 2000, times = times, burn_in = 5000)
 
 ##########
 # Diagnostics
 ##########
 
+println("# Model hyperparameters")
+
 # number of dishes
 plot(summary_dishes(params, burn_in = 5000)[2], size = (480,360), xlim = (0.0, 13.0))
+savefig("figures_supp/melanoma_dishes.svg")
 
 # base measure mass
 plot(summary_theta(params, burn_in = 5000)[2], size = (480,360), xlim = (0.0, 0.4))
+savefig("figures_supp/melanoma_theta.svg")
 
 # kernel shape parameter
-plot(summary_kappa(params, burn_in = 5000)[2], size = (480,360), xlim = (-8.0, 1.0))
+plot(summary_kernelpars(params, :κ, burn_in = 5000)[2], size = (480,360), xlim = (-8.0, 1.0))
+savefig("figures_supp/melanoma_kappa.svg")
 
 ##########
 # Posterior estimates: hazard rate ratio
@@ -108,12 +103,13 @@ R"coxfit <- coxph(Surv(T, Delta > 0) ~ predictor, data = data)"
 R"summary(coxfit)"
 
 # regression coefficient
-(pltrace, hist) = summary_coefficients(params, burn_in = 5000)
+(pltrace, hist) = summary_coefficients(params, 1, burn_in = 5000)
 # plot(pltrace, size = (480,360), xlim = (0,2500), ylim = (-0.5, 1.5))
 plot(hist, size = (480,360), xlim = (-0.5, 1.5))
+savefig("figures_supp/melanoma_coeffs.svg")
 
 # estimate hazard ratio
-# (pltrace, hist) = summary_coefficients(params, burn_in = 5000, hazard_ratio = true)
+# (pltrace, hist) = summary_coefficients(params, 1, burn_in = 5000, hazard_ratio = true)
 # plot(pltrace, size = (480,360), xlim = (0,2500), ylim = (0.5, 4.0))
 # plot(hist, size = (480,360), xlim = (0.5, 4.0))
 
@@ -135,10 +131,12 @@ survival_freq = rcopy(R"km")
 # plots for females
 plot_survival(times, survival_post[:,1], kaplan_meier = survival_freq[:,1], lower = survival_lower[:,1], upper = survival_upper[:,1])
 plot!(xlim = (0.0,8.5), size = (480,360), xlabel = "\$t\$ (years)")
+savefig("figures_supp/melanoma_survival_female.svg")
 
 # plots for males
 plot_survival(times, survival_post[:,2], kaplan_meier = survival_freq[:,2], lower = survival_lower[:,2], upper = survival_upper[:,2])
 plot!(xlim = (0.0,8.5), size = (480,360), xlabel = "\$t\$ (years)")
+savefig("figures_supp/melanoma_survival_male.svg")
 
 ##########
 # Posterior estimates: cumulative incidence functions
@@ -160,12 +158,14 @@ cumincidence_freq = cat(mapslices(values -> timepoints(rcopy(R"cif.melanoma[,1]"
 (_, cumincidence_lower, cumincidence_upper) = estimate_incidence(conditional_estimator, cum = true)
 
 # plots for females
-plot_incidence(times, cumincidence_post[:,1,:], cum = true, aalen_johansen = cumincidence_freq[:,1,:], lower = cumincidence_lower[:,1,:], upper = cumincidence_upper[:,1,:])
+plot_incidence(times, cumincidence_post[:,1,:], cum = true, aalen_johansen = cumincidence_freq[:,1,:], lower = cumincidence_lower[:,1,:], upper = cumincidence_upper[:,1,:], mycolors = [2, 3], mylabels = ["melanoma", "others"])
 plot!(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (years)", legend = :topleft)
+savefig("figures_supp/melanoma_cumincidence_female.svg")
 
 # plots for males
-plot_incidence(times, cumincidence_post[:,2,:], cum = true, aalen_johansen = cumincidence_freq[:,2,:], lower = cumincidence_lower[:,2,:], upper = cumincidence_upper[:,2,:])
+plot_incidence(times, cumincidence_post[:,2,:], cum = true, aalen_johansen = cumincidence_freq[:,2,:], lower = cumincidence_lower[:,2,:], upper = cumincidence_upper[:,2,:], mycolors = [2, 3], mylabels = ["melanoma", "others"])
 plot!(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (years)", legend = :topleft)
+savefig("figures_supp/melanoma_cumincidence_male.svg")
 
 ##########
 # Posterior estimates: prediction curves
@@ -175,9 +175,10 @@ plot!(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (yea
 (proportions_post, proportions_lower, proportions_upper) = estimate_proportions(marginal_estimator)
 
 # plots
-plot_proportions(times, proportions_post[:,1,:], lower = proportions_lower[:,1,:], upper = proportions_upper[:,1,:])
+plot_proportions(times, proportions_post, lower = proportions_lower, upper = proportions_upper, mycolors = [2, 3], mylabels = ["melanoma", "others"])
 plot!(size = (480,360), xlim = (0.0,8.5), xlabel = "\$t\$ (years)")
 vline!([maximum(data.T[data.Delta.!=0])], linestyle = :dashdot, linecolor = :black, linealpha = 0.5, label = false)
+savefig("figures/melanoma_prediction.svg")
 
 ##########
 # BART for competing risks
@@ -244,6 +245,9 @@ begin
     plot!(pl, times, survival_post_bart[:,1], linecolor = 2, label = "BART")
     plot!(pl, times, survival_lower_bart[:,1], fillrange = survival_upper_bart[:,1], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
+    # save figure
+    savefig("figures_supp/compare_melanoma_survival_female.svg")
+
 end
 
 # plots for males
@@ -263,6 +267,9 @@ begin
     # plot BART estimate
     plot!(pl, times, survival_post_bart[:,2], linecolor = 2, label = "BART")
     plot!(pl, times, survival_lower_bart[:,2], fillrange = survival_upper_bart[:,2], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
+
+    # save figure
+    savefig("figures_supp/compare_melanoma_survival_male.svg")
 
 end
 
@@ -290,6 +297,9 @@ begin
     plot!(pl, times, cumincidence_lower_bart[:,1,:], fillrange = cumincidence_upper_bart[:,1,:], 
                 linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
+    # save figure
+    savefig("figures_supp/compare_melanoma_cumincidence_female.svg")
+
 end
 
 # plots for males
@@ -311,5 +321,8 @@ begin
     plot!(pl, times, cumincidence_post_bart[:,2,:], linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
     plot!(pl, times, cumincidence_lower_bart[:,2,:], fillrange = cumincidence_upper_bart[:,2,:], 
                 linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
+
+    # save figure
+    savefig("figures_supp/compare_melanoma_cumincidence_male.svg")
 
 end

@@ -1,6 +1,7 @@
-# import from Distributions
+# imports
 import Distributions: UnivariateDistribution
 import DataFrames: DataFrame
+import Statistics: quantile
 
 """
     independent_dataset(N::Int64, models::Vector{Type}; L::Int64 = 0, censoring::Union{TypeC,Nothing} = nothing) where {Type <: UnivariateDistribution, TypeC <: UnivariateDistribution}
@@ -57,8 +58,7 @@ function summary_models(models::Vector{Type}) where Type <: UnivariateDistributi
 
     # times vector
     upper_time = maximum([quantile(model, 0.9) for model in models])
-    step = upper_time/1000
-    times = Vector{Float64}(0.0:step:upper_time)
+    times = Vector{Float64}(range(0.0, upper_time, 1001))
 
     # true incidence functions
     incidence_true = [hazard(model, t) * prod([survival(model, t) for model in models]) for t in times, model in models]
@@ -74,8 +74,7 @@ function summary_models(models::Vector{Type}) where Type <: UnivariateDistributi
     plprop = plot(legend = :topright, xlabel = "\$t\$", ylabel = "\$p_n(δ \\vert t)\$")
     plot!(plprop, times, proportion_true, linecolor = mycolors, label = mylabels)
 
-    # combine plots
-    pl = plot(plincidence, plprop, layout = (1,2), size = (640,360))
-    return pl
+    # return plots
+    return (plincidence, plprop)
 
 end # summary_models

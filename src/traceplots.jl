@@ -4,6 +4,9 @@ export traceplot_survival, traceplot_incidence, traceplot_proportions
 """
     traceplot_survival(estimator::Estimator, time::Float64; l::Int64 = 0)
 
+Traceplot and empirical autocorrelation function for the estimator of the survival function at a given timepoint `time` and level `l` of the categorical predictor. First argument `estimator` is the output of [`posterior_sampling`](@ref).
+
+See also [`traceplot_incidence`](@ref), [`traceplot_proportions`](@ref).
 """
 function traceplot_survival(estimator::Estimator, time::Float64; l::Int64 = 0)
 
@@ -34,6 +37,9 @@ end # traceplot_survival
 """
     traceplot_incidence(estimator::Estimator, time::Float64; l::Int64 = 0)
 
+Traceplots and empirical autocorrelation functions for the estimators of the incidence functions at a given timepoint `time` and level `l` of the categorical predictor. First argument `estimator` is the output of [`posterior_sampling`](@ref).
+
+See also [`traceplot_survival`](@ref), [`traceplot_proportions`](@ref).
 """
 function traceplot_incidence(estimator::Estimator, time::Float64; l::Int64 = 0)
 
@@ -66,10 +72,13 @@ function traceplot_incidence(estimator::Estimator, time::Float64; l::Int64 = 0)
 end # traceplot_incidence
 
 """
-    traceplot_proportions(estimator::Estimator, time::Float64; l::Int64 = 0)
+    traceplot_proportions(estimator::Estimator, time::Float64)
 
+Traceplots and empirical autocorrelation functions for the estimators of the prediction curves (or relative hazards) at a given timepoint `time`. First argument `estimator` is the output of [`posterior_sampling`](@ref).
+
+See also [`traceplot_survival`](@ref), [`traceplot_incidence`](@ref).
 """
-function traceplot_proportions(estimator::Estimator, time::Float64; l::Int64 = 0)
+function traceplot_proportions(estimator::Estimator, time::Float64)
 
     # labels and colors
     mycolors = reshape([d for d in range(1, estimator.D)], 1, :)
@@ -83,7 +92,7 @@ function traceplot_proportions(estimator::Estimator, time::Float64; l::Int64 = 0
 
     # retrieve trace
     t = sum(time .>= estimator.times)
-    chn = Chains(Matrix{Float64}(transpose(trace[t,l+1,:,:])), vec(mylabels))
+    chn = Chains(Matrix{Float64}(transpose(trace[t,1,:,:])), vec(mylabels))
 
     # describe chain
     describe(chn)

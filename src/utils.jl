@@ -1,18 +1,3 @@
-# export functions
-export hazard, survival, integrate, integrate_trapz
-
-"""
-    hazard(d::Type, t::Float64) where Type <: UnivariateDistribution
-
-"""
-hazard(d::Type, t::Float64) where Type <: UnivariateDistribution = pdf(d, t) / ccdf(d, t)
-
-"""
-    survival(d::Type, t::Float64) where Type <: UnivariateDistribution
-
-"""
-survival(d::Type, t::Float64) where Type <: UnivariateDistribution = ccdf(d, t)
-
 """
     struct LegendreIntegral
 
@@ -31,8 +16,12 @@ end # LegendreIntegral
 """
 function LegendreIntegral( ; num_nodes::Int64 = 5)
 
-    # quadrature nodes and weights
+    # quadrature nodes and weights on (-1,1)
     nodes, weights = gausslegendre(num_nodes)
+
+    # rescale nodes and weights on (0,1)
+    nodes = 0.5 * (nodes .+ 1.0)
+    weights = 0.5 * weights
 
     # create LegendreIntegral
     return LegendreIntegral(nodes, weights)
@@ -65,16 +54,13 @@ end # integrate
 """
 function integrate_legendre(f::Function, lower::Float64, upper::Float64)
 
-    # retrieve domain half-length
-    length = 0.5 * (upper - lower)
-
-    # rescale nodes
-    nodes = length * (legendre.nodes .+ 1.0) .+ lower
+    # retrieve domain length
+    length = (upper - lower)
 
     # compute integral
     I = 0.0
-    for (weight, node) in zip(legendre.weights, nodes)
-        I += weight * f(node)
+    for (weight, node) in zip(legendre.weights, legendre.nodes)
+        I += weight * f(length * node + lower)
     end
     I *= length
 

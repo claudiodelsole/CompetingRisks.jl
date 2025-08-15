@@ -1,5 +1,36 @@
 # imports
+import Distributions: UnivariateDistribution, pdf, ccdf
 import MCMCDiagnosticTools: ess
+
+"""
+    hazard(d::Type, t::Float64) where Type <: UnivariateDistribution
+
+"""
+hazard(d::Type, t::Float64) where Type <: UnivariateDistribution = pdf(d, t) / ccdf(d, t)
+
+"""
+    survival(d::Type, t::Float64) where Type <: UnivariateDistribution
+
+"""
+survival(d::Type, t::Float64) where Type <: UnivariateDistribution = ccdf(d, t)
+
+"""
+    integrate_trapz(values::Vector{Float64}, times::Vector{Float64}; cum::Bool = false)
+
+"""
+function integrate_trapz(values::Vector{Float64}, times::Vector{Float64}; cum::Bool = false)
+
+    # trapezoid integrals
+    trapz = 0.5 * (values[begin:end-1] + values[begin+1:end]) .* diff(times)
+
+    # compute integrals
+    if cum == true
+        return pushfirst!(cumsum(trapz), 0.0)
+    end
+
+    return sum(trapz)
+
+end # integrate_trapz
 
 """
     ess_survival(estimator::Estimator, time::Float64; l::Int64 = 0)

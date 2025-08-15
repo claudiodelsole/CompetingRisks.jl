@@ -42,11 +42,11 @@ function survival_tables(rf::Restaurants, _::Nothing, times::Vector{Float64})
         dish_value = rf.Xstar[dish]
 
         # precompute KernelInt
-        KInt = rf.alpha * rf.KInt[dish]
+        KInt = rf.KInt[dish]
         
         # store values
         for (t, time) in enumerate(times)
-            estimate[t] += logtau_diff(qtable, rf.alpha * KernelInt(dish_value, time, nothing, rf.kappa), rf.beta, rf.sigma, posterior = KInt)
+            estimate[t] += logtau_diff(qtable, KernelInt(dish_value, time, nothing, rf.kernelpars), rf.beta + KInt, rf.sigma)
         end
         
     end
@@ -75,12 +75,12 @@ function survival_tables(rf::Restaurants, CoxProd::Vector{Float64}, times::Vecto
         dish_value = rf.Xstar[dish]
 
         # precompute KernelInt
-        KInt = rf.alpha * rf.KInt[dish]
+        KInt = rf.KInt[dish]
         
         # store values
         for (t, time) in enumerate(times)
             for (l, cp) in enumerate(CoxProd)
-                estimate[t,l] += logtau_diff(qtable, rf.alpha * KernelInt(dish_value, time, cp, rf.kappa), rf.beta, rf.sigma, posterior = KInt)
+                estimate[t,l] += logtau_diff(qtable, KernelInt(dish_value, time, cp, rf.kernelpars), rf.beta + KInt, rf.sigma)
             end
         end
         
@@ -113,11 +113,11 @@ function survival_dishes(rf::Restaurants, _::Nothing, times::Vector{Float64})
         dish_value = rf.Xstar[dish]
 
         # precompute KernelInt
-        KInt = rf.alpha * rf.KInt[dish]
+        KInt = rf.KInt[dish]
 
         # store values
         for (t, time) in enumerate(times)
-            estimate[t] += logtau_diff(rdish, rf.D * psi(rf.alpha * KernelInt(dish_value, time, nothing, rf.kappa), rf.beta, rf.sigma, posterior = KInt), rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+            estimate[t] += logtau_diff(rdish, rf.D * psi(KernelInt(dish_value, time, nothing, rf.kernelpars), rf.beta + KInt, rf.sigma), rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0)
         end
 
     end
@@ -149,12 +149,12 @@ function survival_dishes(rf::Restaurants, CoxProd::Vector{Float64}, times::Vecto
         dish_value = rf.Xstar[dish]
 
         # precompute KernelInt
-        KInt = rf.alpha * rf.KInt[dish]
+        KInt = rf.KInt[dish]
 
         # store values
         for (t, time) in enumerate(times)
             for (l, cp) in enumerate(CoxProd)
-                estimate[t,l] += logtau_diff(rdish, rf.D * psi(rf.alpha * KernelInt(dish_value, time, cp, rf.kappa), rf.beta, rf.sigma, posterior = KInt), rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+                estimate[t,l] += logtau_diff(rdish, rf.D * psi(KernelInt(dish_value, time, cp, rf.kernelpars), rf.beta + KInt, rf.sigma), rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0)
             end
         end
 
@@ -177,14 +177,14 @@ function survival_base(rf::Restaurants, _::Nothing, times::Vector{Float64})
     function f(x::Float64, t::Float64)
 
         # precompute KernelInt
-        KInt = rf.alpha * KernelInt(x, rf.T, nothing, rf.kappa)
+        KInt = KernelInt(x, rf.T, nothing, rf.kernelpars)
 
         # compute integrand
-        feval = rf.D * psi(rf.alpha * KernelInt(x, t, nothing, rf.kappa), rf.beta, rf.sigma, posterior = KInt)
+        feval = rf.D * psi(KernelInt(x, t, nothing, rf.kernelpars), rf.beta + KInt, rf.sigma)
 
         # compute integrand
         if rf.hierarchical  # restaurant franchise
-            feval = psi(feval, rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma)) 
+            feval = psi(feval, rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0)
         end
 
         # compute integrand
@@ -214,14 +214,14 @@ function survival_base(rf::Restaurants, CoxProd::Vector{Float64}, times::Vector{
     function f(x::Float64, t::Float64, cp::Float64)
 
         # precompute KernelInt
-        KInt = rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.kappa)
+        KInt = KernelInt(x, rf.T, rf.CoxProd, rf.kernelpars)
 
         # compute integrand
-        feval = rf.D * psi(rf.alpha * KernelInt(x, t, cp, rf.kappa), rf.beta, rf.sigma, posterior = KInt)
+        feval = rf.D * psi(KernelInt(x, t, cp, rf.kernelpars), rf.beta + KInt, rf.sigma)
 
         # compute integrand
         if rf.hierarchical  # restaurant franchise
-            feval = psi(feval, rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma)) 
+            feval = psi(feval, rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0) 
         end
 
         # compute integrand
@@ -260,15 +260,15 @@ function incidence_tables(rf::Restaurants, _::Nothing, times::Vector{Float64})
         dish_value = rf.Xstar[dish]
 
         # precompute KernelInt
-        KInt = rf.alpha * rf.KInt[dish]
+        KInt = rf.KInt[dish]
 
         # retrieve restaurant
         rest = rf.table_rest[table]
         
         # store values
         for (t, time) in enumerate(times)
-            estimate[t, rest] += rf.alpha * kernel(dish_value, time, nothing, rf.kappa) * 
-                    tau_ratio(qtable, rf.alpha * KernelInt(dish_value, time, nothing, rf.kappa), rf.beta, rf.sigma, posterior = KInt)
+            estimate[t, rest] += kernel(dish_value, time, nothing, rf.kernelpars) * 
+                    tau_ratio(qtable, KernelInt(dish_value, time, nothing, rf.kernelpars), rf.beta + KInt, rf.sigma)
         end
         
     end
@@ -297,7 +297,7 @@ function incidence_tables(rf::Restaurants, CoxProd::Vector{Float64}, times::Vect
         dish_value = rf.Xstar[dish]
 
         # precompute KernelInt
-        KInt = rf.alpha * rf.KInt[dish]
+        KInt = rf.KInt[dish]
 
         # retrieve restaurant
         rest = rf.table_rest[table]
@@ -305,8 +305,8 @@ function incidence_tables(rf::Restaurants, CoxProd::Vector{Float64}, times::Vect
         # store values
         for (t, time) in enumerate(times)
             for (l, cp) in enumerate(CoxProd)
-                estimate[t, l, rest] += rf.alpha * kernel(dish_value, time, cp, rf.kappa) * 
-                        tau_ratio(qtable, rf.alpha * KernelInt(dish_value, time, cp, rf.kappa), rf.beta, rf.sigma, posterior = KInt)
+                estimate[t, l, rest] += kernel(dish_value, time, cp, rf.kernelpars) * 
+                        tau_ratio(qtable, KernelInt(dish_value, time, cp, rf.kernelpars), rf.beta + KInt, rf.sigma)
             end
         end
         
@@ -339,13 +339,13 @@ function incidence_dishes(rf::Restaurants, _::Nothing, times::Vector{Float64})
         dish_value = rf.Xstar[dish]
 
         # precompute KernelInt
-        KInt = rf.alpha * rf.KInt[dish]
+        KInt = rf.KInt[dish]
 
         # store values
         for (t, time) in enumerate(times)
-            estimate[t] += rf.alpha * kernel(dish_value, time, nothing, rf.kappa) * 
-                    tau(rf.alpha * KernelInt(dish_value, time,nothing, rf.kappa), rf.beta, rf.sigma, posterior = KInt) * 
-                    tau_ratio(rdish, rf.D * psi(rf.alpha * KernelInt(dish_value, time, nothing, rf.kappa), rf.beta, rf.sigma, posterior = KInt), rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+            estimate[t] += kernel(dish_value, time, nothing, rf.kernelpars) * 
+                    tau(KernelInt(dish_value, time,nothing, rf.kernelpars), rf.beta + KInt, rf.sigma) * 
+                    tau_ratio(rdish, rf.D * psi(KernelInt(dish_value, time, nothing, rf.kernelpars), rf.beta + KInt, rf.sigma), rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0)
         end
 
     end
@@ -377,14 +377,14 @@ function incidence_dishes(rf::Restaurants, CoxProd::Vector{Float64}, times::Vect
         dish_value = rf.Xstar[dish]
 
         # precompute KernelInt
-        KInt = rf.alpha * rf.KInt[dish]
+        KInt = rf.KInt[dish]
 
         # store values
         for (t, time) in enumerate(times)
             for (l, cp) in enumerate(CoxProd)
-                estimate[t,l] = rf.alpha * kernel(dish_value, time, cp, rf.kappa) * 
-                        tau(rf.alpha * KernelInt(dish_value, time, cp, rf.kappa), rf.beta, rf.sigma, posterior = KInt) * 
-                        tau_ratio(rdish, rf.D * psi(rf.alpha * KernelInt(dish_value, time, cp, rf.kappa), rf.beta, rf.sigma, posterior = KInt), rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+                estimate[t,l] = kernel(dish_value, time, cp, rf.kernelpars) * 
+                        tau(KernelInt(dish_value, time, cp, rf.kernelpars), rf.beta + KInt, rf.sigma) * 
+                        tau_ratio(rdish, rf.D * psi(KernelInt(dish_value, time, cp, rf.kernelpars), rf.beta + KInt, rf.sigma), rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0)
             end
         end
 
@@ -407,14 +407,14 @@ function incidence_base(rf::Restaurants, _::Nothing, times::Vector{Float64})
     function f(x::Float64, t::Float64)
 
         # precompute KernelInt
-        KInt = rf.alpha * KernelInt(x, rf.T, nothing, rf.kappa)
+        KInt = KernelInt(x, rf.T, nothing, rf.kernelpars)
 
         # compute integrand
-        feval = rf.alpha * kernel(x, t, nothing, rf.kappa) * tau(rf.alpha * KernelInt(x, t, nothing, rf.kappa), rf.beta, rf.sigma, posterior = KInt)
+        feval = kernel(x, t, nothing, rf.kernelpars) * tau(KernelInt(x, t, nothing, rf.kernelpars), rf.beta + KInt, rf.sigma)
 
         # compute integrand
         if rf.hierarchical  # restaurant franchise
-            feval *= tau(rf.D * psi(rf.alpha * KernelInt(x, t, nothing, rf.kappa), rf.beta, rf.sigma, posterior = KInt), rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma)) 
+            feval *= tau(rf.D * psi(KernelInt(x, t, nothing, rf.kernelpars), rf.beta + KInt, rf.sigma), rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0) 
         end
 
         return feval
@@ -443,14 +443,14 @@ function incidence_base(rf::Restaurants, CoxProd::Vector{Float64}, times::Vector
     function f(x::Float64, t::Float64, cp::Float64)
 
         # precompute KernelInt
-        KInt = rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.kappa)
+        KInt = KernelInt(x, rf.T, rf.CoxProd, rf.kernelpars)
 
         # compute integrand
-        feval = rf.alpha * kernel(x, t, cp, rf.kappa) * tau(rf.alpha * KernelInt(x, t, cp, rf.kappa), rf.beta, rf.sigma, posterior = KInt)
+        feval = kernel(x, t, cp, rf.kernelpars) * tau(KernelInt(x, t, cp, rf.kernelpars), rf.beta + KInt, rf.sigma)
 
         # compute integrand
         if rf.hierarchical  # restaurant franchise
-            feval *= tau(rf.D * psi(rf.alpha * KernelInt(x, t, cp, rf.kappa), rf.beta, rf.sigma, posterior = KInt), rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+            feval *= tau(rf.D * psi(KernelInt(x, t, cp, rf.kernelpars), rf.beta + KInt, rf.sigma), rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0)
         end
 
         # compute integrand

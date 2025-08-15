@@ -8,9 +8,7 @@ function error_survival(survival_post::Vector{Float64}, survival_true::Vector{Fl
     error_post = abs.(survival_post - survival_true) 
 
     # maximum error
-    max_error = maximum(error_post)
-
-    return max_error
+    return maximum(error_post)
 
 end # error_survival
 

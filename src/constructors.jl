@@ -1,29 +1,24 @@
 """
-    function CoxModel(data::DataFrame)
+    CompetingRisksModel(KernelType::Type{<:AbstractKernel}; beta::Float64 = 1.0, sigma::Float64 = 0.0, beta0::Float64 = 1.0, sigma0::Float64 = 0.0, hierarchical::Bool = true, regression::Bool = false)
+
+Kernel specification, random measures parameters, hierachical or independent model, regression or exchangeable data.
+
+The `KernelType` is a subtype of `AbstractKernel`, to choose among `DykstraLaudKernel`, `OrnsteinUhlenbeckKernel` and `RectKernel`.
+Parameters `beta` and `beta0` are rate parameters, `sigma` and `sigma0` are discount paramters. Base measure parameters `beta0` and `sigma0` are used only if `hierarchical = true`.
+The currently available Cox regression model involves categorical predictors.
+"""
+function CompetingRisksModel(KernelType::Type{<:AbstractKernel}; beta::Float64 = 1.0, sigma::Float64 = 0.0, beta0::Float64 = 1.0, sigma0::Float64 = 0.0, hierarchical::Bool = true, regression::Bool = false)
+
+    # create CompetingRisksModel
+    return CompetingRisksModel(KernelType, beta, sigma, beta0, sigma0, hierarchical, regression)
+
+end # CompetingRisksModel
 
 """
-function CoxModel(data::DataFrame)
-
-    # retrieve dimensions
-    N = length(data.predictor)      # number of patients
-    L = maximum(data.predictor)     # number of categorical levels
-
-    # initialize regression coefficients
-    eta = zeros(Float64, L)     # regression coefficients (dim L)
-
-    # indexing in descending order
-    idxs = sortperm(data.T, rev = true)
-
-    # create CoxModel
-    return CoxModel(N, L, data.predictor[idxs], eta)
-
-end # CoxModel
+    Restaurants(data::DataFrame, kernelpars::KernelType, beta::Float64, sigma::Float64, beta0::Float64, sigma0::Float64, hierarchical::Bool) where KernelType <: AbstractKernel
 
 """
-    function Restaurants(data::DataFrame; theta::Float64 = 1.0, alpha::Float64 = 1.0, kappa::Float64 = 1.0, beta::Float64 = 1.0, sigma::Float64 = 0.0, beta0::Float64 = 1.0, sigma0::Float64 = 0.0, hierarchical::Bool = true)
-
-"""
-function Restaurants(data::DataFrame; theta::Float64 = 1.0, alpha::Float64 = 1.0, kappa::Float64 = 1.0, beta::Float64 = 1.0, sigma::Float64 = 0.0, beta0::Float64 = 1.0, sigma0::Float64 = 0.0, hierarchical::Bool = true)
+function Restaurants(data::DataFrame, kernelpars::KernelType, beta::Float64, sigma::Float64, beta0::Float64, sigma0::Float64, hierarchical::Bool) where KernelType <: AbstractKernel
 
     # retrieve dimension
     N = length(data.Delta)      # number of customers
@@ -57,16 +52,40 @@ function Restaurants(data::DataFrame; theta::Float64 = 1.0, alpha::Float64 = 1.0
     KInt = zeros(Float64, k)        # KernelInt for dishes distinct values (dim k)
     mass_base = zeros(Float64, N)   # mass_base for observations (dim N)
 
+    # initialize CRM hyperparameters
+    theta = 1.0     # concentration
+
     # indexing in descending order
     idxs = sortperm(data.T, rev = true)
 
     # create Restaurants
-    return Restaurants(N, D, data.T[idxs], data.Delta[idxs], CoxProd, X, Z, Xstar, n, r, q, table_dish, table_rest, KInt, mass_base, beta, sigma, beta0, sigma0, theta, alpha, kappa, hierarchical)
+    return Restaurants{KernelType}(N, D, data.T[idxs], data.Delta[idxs], CoxProd, X, Z, Xstar, n, r, q, table_dish, table_rest, KInt, mass_base, kernelpars, theta, beta, sigma, beta0, sigma0, hierarchical)
 
 end # Restaurants
 
 """
-    function Estimator(rf::Restaurants, cm::Union{CoxModel,Nothing}, times::Vector{Float64})
+    CoxModel(data::DataFrame)
+
+"""
+function CoxModel(data::DataFrame)
+
+    # retrieve dimensions
+    N = length(data.predictor)      # number of patients
+    L = maximum(data.predictor)     # number of categorical levels
+
+    # initialize regression coefficients
+    eta = zeros(Float64, L)     # regression coefficients (dim L)
+
+    # indexing in descending order
+    idxs = sortperm(data.T, rev = true)
+
+    # create CoxModel
+    return CoxModel(N, L, data.predictor[idxs], eta)
+
+end # CoxModel
+
+"""
+    Estimator(rf::Restaurants, cm::Union{CoxModel,Nothing}, times::Vector{Float64})
 
 """
 function Estimator(rf::Restaurants, cm::Union{CoxModel,Nothing}, times::Vector{Float64})

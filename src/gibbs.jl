@@ -2,21 +2,47 @@
 export posterior_sampling
 
 """
-    posterior_sampling(rf::Restaurants, cm::Union{CoxModel,Nothing}, nsamples::Int64; times::Vector{Float64} = collect(range(0.0, maximum(rf.T), 200)), thin::Int64 = 10, burn_in::Int64 = 1000, nsamples_crms::Int64 = 1, Tmax::Float64 = maximum(times), started::Bool = false)
+    posterior_sampling(data::DataFrame, cmprsk::CompetingRisksModel;
+        nsamples::Int64 = 1000, thin::Int64 = 10, burn_in::Int64 = 1000, nsamples_crms::Int64 = 1,
+        times::Vector{Float64} = collect(range(0.0, maximum(rf.T), 200)))
 
+Gibbs sampling algorithm for posterior inference in mixture hazard models for competing risks.
+
+# Main arguments:
+- `data::DataFrame`: contains survival times in `data.T` and event types in `data.Delta` 
+- `cmprsk::CompetingRisksModel`: kernel specification, random measures parameters, hierachical or independent model, regression or exchangeable data
+
+# Algorithm arguments:
+- `nsamples::Int64 = 1000`: number of posterior samples
+- `thin::Int64 = 10`: thinning parameter
+- `burn_in::Int64 = 1000`: initial discarded samples
+- `nsamples_crms::Int64 = 1`: number of independent samples from posterior random measures for each sample from the latent partition
+
+Parameter `times::Vector{Float64}` contains evaluation timepoints for the estimators. Default is 200 points between 0.0 and the maximum observed survival time.
+
+# `Outputs:
+- `marginal_estimator::Estimator`: collection of posterior samples obtained with marginal algorithm (not true posteriors)
+- `posterior_estimator::Estimator`: collection of posterior samples
+- `params::Parameters`: collection of posterior samples of model parameters
 """
-function posterior_sampling(rf::Restaurants, cm::Union{CoxModel,Nothing}, nsamples::Int64; times::Vector{Float64} = collect(range(0.0, maximum(rf.T), 200)), thin::Int64 = 10, burn_in::Int64 = 1000, nsamples_crms::Int64 = 1, Tmax::Float64 = maximum(times), started::Bool = false)
+function posterior_sampling(data::DataFrame, cmprsk::CompetingRisksModel;
+        nsamples::Int64 = 1000, thin::Int64 = 10, burn_in::Int64 = 1000, nsamples_crms::Int64 = 1,
+        times::Vector{Float64} = collect(range(0.0, maximum(rf.T), 200)))
+
+    # create Restaurants
+    rf = Restaurants(data, cmprsk.KernelType(), cmprsk.beta, cmprsk.sigma, cmprsk.beta0, cmprsk.sigma0, cmprsk.hierarchical)
+
+    # create CoxModel
+    cm = cmprsk.regression ? CoxModel(data) : nothing
 
     # initialize estimators
-    marginal_estimator, conditional_estimator = Estimator(rf, cm, times), Estimator(rf, cm, times)
+    marginal_estimator, posterior_estimator = Estimator(rf, cm, times), Estimator(rf, cm, times)
     
     # initialize Parameters
-    params = Parameters()
+    params = Parameters(typeof(rf.kernelpars))
 
     # initialize latent variables
-    if started == false
-        initialize(rf, cm)
-    end
+    initialize(rf, cm)
 
     # burn-in phase
     @showprogress for _ in range(1, burn_in)
@@ -34,21 +60,21 @@ function posterior_sampling(rf::Restaurants, cm::Union{CoxModel,Nothing}, nsampl
         # marginal inference
         append(marginal_estimator, rf, isnothing(cm) ? nothing : pushfirst!(exp.(cm.eta), 1.0))
 
-        # conditional inference
+        # posterior inference
         for _ in range(1, nsamples_crms)
 
             # posterior sampling
-            crms = sample_measures(rf, Tmax)
+            crms = sample_measures(rf, maximum(times))
 
             # inference
-            append(conditional_estimator, crms, rf, isnothing(cm) ? nothing : pushfirst!(exp.(cm.eta), 1.0))
+            append(posterior_estimator, crms, rf.kernelpars, isnothing(cm) ? nothing : pushfirst!(exp.(cm.eta), 1.0))
 
         end
 
     end
 
     # return Parameters
-    return marginal_estimator, conditional_estimator, params
+    return marginal_estimator, posterior_estimator, params
 
 end # posterior_sampling
 
@@ -68,13 +94,14 @@ function initialize(rf::Restaurants, cm::Union{CoxModel,Nothing})
         end
     end
 
-    # resampling
+    # resampling dishes
     resample_dishes(rf)
+    
+    # resampling hyperparameters
     resample_theta(rf)
 
-    # resampling hyperparameters
-    resample_alpha(rf)
-    resample_kappa(rf)
+    # resampling kernel parameters
+    resample_kernelpars(rf)
 
     # resampling coefficients
     if !isnothing(cm) resample_coefficients(rf, cm) end
@@ -94,13 +121,14 @@ function gibbs_step(rf::Restaurants, cm::Union{CoxModel,Nothing}, params::Parame
         end
     end
 
-    # resampling
+    # resampling dishes
     accept_dishes = resample_dishes(rf)
+
+    # resampling hyperparameters
     resample_theta(rf)
 
     # resampling hyperparameters
-    (accept_alpha, flag_alpha) = resample_alpha(rf)
-    (accept_kappa, flag_kappa) = resample_kappa(rf)
+    (accept_kernelpars, flag_kernelpars) = resample_kernelpars(rf)
 
     # resampling coefficients
     (accept_coeffs, flag_coeffs) = zeros(Float64, 1), false
@@ -109,10 +137,10 @@ function gibbs_step(rf::Restaurants, cm::Union{CoxModel,Nothing}, params::Parame
     end
 
     # precompute quantities
-    if (flag_alpha || flag_kappa || flag_coeffs) precompute_mass_base(rf) end
+    if (flag_kernelpars || flag_coeffs) precompute_mass_base(rf) end
 
     # Parameters
-    append(params, rf, cm, accept_dishes, accept_alpha, accept_kappa, accept_coeffs)
+    append(params, rf, cm, accept_dishes, accept_kernelpars, accept_coeffs)
 
 end # gibbs_step
 
@@ -148,10 +176,10 @@ end # mass_base
 function likelihood_base(x::Float64, time::Float64, cp::Union{Float64,Nothing}, rf::Restaurants)
 
     # compute KernelInt
-    KInt = rf.alpha * KernelInt(x, rf.T, rf.CoxProd, rf.kappa)
+    KInt = KernelInt(x, rf.T, rf.CoxProd, rf.kernelpars)
 
     # compute likelihood ratio
-    loglik = rf.alpha * kernel(x, time, cp, rf.kappa) * tau(KInt, rf.beta, rf.sigma)
+    loglik = kernel(x, time, cp, rf.kernelpars) * tau(KInt, rf.beta, rf.sigma)
 
     # compute likelihood ratio
     if rf.hierarchical      # restaurant franchise
@@ -264,7 +292,7 @@ function mass_table(time::Float64, cp::Union{Float64,Nothing}, table::Int64, qta
         dish_value = rf.Xstar[dish]
 
         # compute mass
-        mass = rf.alpha * kernel(dish_value, time, cp, rf.kappa) * tau_ratio(qtable, rf.alpha * rf.KInt[dish], rf.beta, rf.sigma)
+        mass = kernel(dish_value, time, cp, rf.kernelpars) * tau_ratio(qtable, rf.KInt[dish], rf.beta, rf.sigma)
 
     end
     
@@ -287,8 +315,7 @@ function mass_dish(time::Float64, cp::Union{Float64,Nothing}, dish::Int64, rdish
         dish_value = rf.Xstar[dish]
 
         # compute mass
-        mass = rf.alpha * kernel(dish_value, time, cp, rf.kappa) * tau(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma)
-        mass *= tau_ratio(rdish, rf.D * psi(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma), rf.beta0, rf.sigma0)
+        mass = kernel(dish_value, time, cp, rf.kernelpars) * tau(rf.KInt[dish], rf.beta, rf.sigma) * tau_ratio(rdish, rf.D * psi(rf.KInt[dish], rf.beta, rf.sigma), rf.beta0, rf.sigma0)
 
     end
 
@@ -383,7 +410,7 @@ function new_allocation(obs::Int64, mass_tables::Vector{Float64}, mass_dishes::V
         rf.Xstar[dish] = dish_value
 
         # update precomputed variables
-        rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.CoxProd, rf.kappa)
+        rf.KInt[dish] = KernelInt(dish_value, rf.T, rf.CoxProd, rf.kernelpars)
 
         # update counts vectors
         rf.n[dish] += 1         # customers per dish

@@ -1,14 +1,14 @@
 """
-    append(estimator::Estimator, crms::Vector{CRM}, rf::Restaurants, CoxProd::Union{Vector{Float64},Nothing})
+    append(estimator::Estimator, crms::Vector{CRM}, kernelpars::AbstractKernel, CoxProd::Union{Vector{Float64},Nothing})
 
 """
-function append(estimator::Estimator, crms::Vector{CRM}, rf::Restaurants, CoxProd::Union{Vector{Float64},Nothing})
+function append(estimator::Estimator, crms::Vector{CRM}, kernelpars::AbstractKernel, CoxProd::Union{Vector{Float64},Nothing})
 
     # compute survival estimate
-    survival = survival_measures(crms, estimator.times, rf, CoxProd)
+    survival = survival_measures(crms, estimator.times, kernelpars, CoxProd)
 
     # compute hazard estimate
-    hazard = hazard_measures(crms, estimator.times, rf, CoxProd)
+    hazard = hazard_measures(crms, estimator.times, kernelpars, CoxProd)
 
     # append estimates
     append!(estimator.survival_samples, survival)
@@ -17,10 +17,10 @@ function append(estimator::Estimator, crms::Vector{CRM}, rf::Restaurants, CoxPro
 end # append
 
 """
-    survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, _::Nothing)
+    survival_measures(crms::Vector{CRM}, times::Vector{Float64}, kernelpars::AbstractKernel, _::Nothing)
 
 """
-function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, _::Nothing)
+function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, kernelpars::AbstractKernel, _::Nothing)
 
     # initialize estimate vector
     estimate = zeros(length(times))
@@ -33,7 +33,7 @@ function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restau
 
         for crm in crms     # loop on causes
             for (atom, jump) in zip(crm.locations, crm.jumps)       # loop on locations and jumps
-                est -= rf.alpha * KernelInt(atom, time, nothing, rf.kappa) * jump
+                est -= KernelInt(atom, time, nothing, kernelpars) * jump
             end
         end
 
@@ -47,10 +47,10 @@ function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restau
 end # survival_measures
 
 """
-    survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, CoxProd::Vector{Float64})
+    survival_measures(crms::Vector{CRM}, times::Vector{Float64}, kernelpars::AbstractKernel, CoxProd::Vector{Float64})
 
 """
-function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, CoxProd::Vector{Float64})
+function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, kernelpars::AbstractKernel, CoxProd::Vector{Float64})
 
     # initialize estimate vector
     estimate = zeros(length(times), length(CoxProd))
@@ -64,7 +64,7 @@ function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restau
 
             for crm in crms     # loop on causes
                 for (atom, jump) in zip(crm.locations, crm.jumps)       # loop on locations and jumps
-                    est -= rf.alpha * KernelInt(atom, time, cp, rf.kappa) * jump
+                    est -= KernelInt(atom, time, cp, kernelpars) * jump
                 end
             end
 
@@ -79,10 +79,10 @@ function survival_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restau
 end # survival_measures
 
 """
-    hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, _::Nothing)
+    hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, kernelpars::AbstractKernel, _::Nothing)
 
 """
-function hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, _::Nothing)
+function hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, kernelpars::AbstractKernel, _::Nothing)
 
     # initialize estimate vector
     estimate = zeros(length(times), length(crms))
@@ -96,7 +96,7 @@ function hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaura
 
             # loop on locations and jumps
             for (atom, jump) in zip(crm.locations, crm.jumps)
-                est += rf.alpha * kernel(atom, time, nothing, rf.kappa) * jump
+                est += kernel(atom, time, nothing, kernelpars) * jump
             end
 
             # store estimate
@@ -110,10 +110,10 @@ function hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaura
 end # hazard_measures
 
 """
-    hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, CoxProd::Vector{Float64})
+    hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, kernelpars::AbstractKernel, CoxProd::Vector{Float64})
 
 """
-function hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaurants, CoxProd::Vector{Float64})
+function hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, kernelpars::AbstractKernel, CoxProd::Vector{Float64})
 
     # initialize estimate vector
     estimate = zeros(length(times), length(CoxProd), length(crms))
@@ -128,7 +128,7 @@ function hazard_measures(crms::Vector{CRM}, times::Vector{Float64}, rf::Restaura
 
                 # loop on locations and jumps
                 for (atom, jump) in zip(crm.locations, crm.jumps)
-                    est += rf.alpha * kernel(atom, time, cp, rf.kappa) * jump
+                    est += kernel(atom, time, cp, kernelpars) * jump
                 end
 
                 # store estimate

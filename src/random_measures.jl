@@ -51,7 +51,7 @@ function sample_base_measure(rf::Restaurants, Tmax::Float64; eps::Float64 = 1.0e
         if rdish == 0 continue end
 
         # sample jump height
-        jumps[dish] = sample_jump(rdish, rf.beta0, rf.sigma0, posterior = rf.D * psi(rf.alpha * rf.KInt[dish], rf.beta, rf.sigma))
+        jumps[dish] = sample_jump(rdish, rf.beta0 + rf.D * psi(rf.KInt[dish], rf.beta, rf.sigma), rf.sigma0)
 
     end
 
@@ -59,7 +59,7 @@ function sample_base_measure(rf::Restaurants, Tmax::Float64; eps::Float64 = 1.0e
     sumjumps, numjumps = 0.0, 0
 
     # initialize standard Poisson process
-    logjump, spp = -1.0, 0.0
+    logjump, jump, spp = -1.0, 0.0, 0.0
 
     while spp <= tail_integral(log(eps * sumjumps), rf.beta0, rf.sigma0) && numjumps < maxIter
 
@@ -70,11 +70,11 @@ function sample_base_measure(rf::Restaurants, Tmax::Float64; eps::Float64 = 1.0e
         atom = rand() * Tmax
 
         # precompute KernelInt
-        KInt = rf.alpha * KernelInt(atom, rf.T, rf.CoxProd, rf.kappa)
+        KInt = KernelInt(atom, rf.T, rf.CoxProd, rf.kernelpars)
 
         # define functions
-        f(logh::Float64) = tail_integral(logh, rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
-        fp(logh::Float64) = tail_integral_grad(logh, rf.beta0, rf.sigma0, posterior = rf.D * psi(KInt, rf.beta, rf.sigma))
+        f(logh::Float64) = tail_integral(logh, rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0)
+        fp(logh::Float64) = tail_integral_grad(logh, rf.beta0 + rf.D * psi(KInt, rf.beta, rf.sigma), rf.sigma0)
 
         # algorithm starting point
         if logjump >= 0.0 logjump = -1.0 end
@@ -120,7 +120,7 @@ function sample_dependent_measures(rf::Restaurants, base_measure::CRM; eps::Floa
         rest = rf.table_rest[table]
 
         # sample jump height
-        jumps[dish, rest] += sample_jump(qtable, rf.beta, rf.sigma, posterior = rf.alpha * rf.KInt[dish])
+        jumps[dish, rest] += sample_jump(qtable, rf.beta + rf.KInt[dish], rf.sigma)
 
     end
 
@@ -135,7 +135,7 @@ function sample_dependent_measures(rf::Restaurants, base_measure::CRM; eps::Floa
         sumjumps, numjumps = 0.0, 0
 
         # initialize standard Poisson process
-        logjump, spp = -1.0, 0.0
+        logjump, jump, spp = -1.0, 0.0, 0.0
 
         while spp <= tail_integral(log(eps * sumjumps), rf.beta, rf.sigma) && numjumps < maxIter
 
@@ -146,11 +146,11 @@ function sample_dependent_measures(rf::Restaurants, base_measure::CRM; eps::Floa
             atom = rand(baseCRM)
 
             # precompute KernelInt
-            KInt = rf.alpha * KernelInt(base_measure.locations[atom], rf.T, rf.CoxProd, rf.kappa)
+            KInt = KernelInt(base_measure.locations[atom], rf.T, rf.CoxProd, rf.kernelpars)
 
             # define functions
-            f(logh::Float64) = tail_integral(logh, rf.beta, rf.sigma, posterior = KInt)
-            fp(logh::Float64) = tail_integral_grad(logh, rf.beta, rf.sigma, posterior = KInt)
+            f(logh::Float64) = tail_integral(logh, rf.beta + KInt, rf.sigma)
+            fp(logh::Float64) = tail_integral_grad(logh, rf.beta + KInt, rf.sigma)
 
             # algorithm starting point
             if logjump >= 0.0 logjump = -1.0 end
@@ -200,7 +200,7 @@ function sample_independent_measures(rf::Restaurants, Tmax::Float64; eps::Float6
             if ntable == 0 || rf.table_rest[table] != d continue end
 
             # sample jump height
-            jumps[table] = sample_jump(ntable, rf.beta, rf.sigma, posterior = rf.alpha * rf.KInt[table])
+            jumps[table] = sample_jump(ntable, rf.beta + rf.KInt[table], rf.sigma)
 
         end
 
@@ -208,7 +208,7 @@ function sample_independent_measures(rf::Restaurants, Tmax::Float64; eps::Float6
         sumjumps, numjumps = 0.0, 0
 
         # initialize standard Poisson process
-        logjump, spp = -1.0, 0.0
+        logjump, jump, spp = -1.0, 0.0, 0.0
 
         while spp <= tail_integral(log(eps * sumjumps), rf.beta, rf.sigma) && numjumps < maxIter
 
@@ -219,11 +219,11 @@ function sample_independent_measures(rf::Restaurants, Tmax::Float64; eps::Float6
             atom = rand() * Tmax
 
             # precompute KernelInt
-            KInt = rf.alpha * KernelInt(atom, rf.T, rf.CoxProd, rf.kappa)
+            KInt = KernelInt(atom, rf.T, rf.CoxProd, rf.kernelpars)
 
             # define functions
-            f(logh::Float64) = tail_integral(logh, rf.beta, rf.sigma, posterior = KInt)
-            fp(logh::Float64) = tail_integral_grad(logh, rf.beta, rf.sigma, posterior = KInt)
+            f(logh::Float64) = tail_integral(logh, rf.beta + KInt, rf.sigma)
+            fp(logh::Float64) = tail_integral_grad(logh, rf.beta + KInt, rf.sigma)
 
             # algorithm starting point
             if logjump >= 0.0 logjump = -1.0 end

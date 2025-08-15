@@ -5,14 +5,14 @@ using CompetingRisks
 import Random: seed!
 import Distributions: Weibull
 import StatsBase: counts
-import Plots: plot, plot!, histogram
+import Plots: plot, plot!, histogram, savefig
 
 # set seed for reproducibility
 seed!(24)
 
 # include auxiliary files
-include("../aux_code/create_datasets.jl")
 include("../aux_code/functions.jl")
+include("../aux_code/create_datasets.jl")
 include("../aux_code/rbart.jl")
 include("../aux_code/errors.jl")
 
@@ -28,7 +28,9 @@ D = 2       # number of diseases
 true_models = [Weibull(1.2), Weibull(2.4)]
 
 # models summary
-summary_models(true_models)
+(plincidence, plprop) = summary_models(true_models)
+plot!(plincidence, size = (480,360))
+plot!(plprop, size = (480,360))
 
 # create synthetic dataset
 data = independent_dataset(N, true_models)
@@ -50,15 +52,9 @@ proportions_true = [hazard(model, t) / sum([hazard(model, t) for model in true_m
 density_true = vec(sum(incidence_true, dims = 2))
 
 # data summary
+println("# Data summary")
 println("Subjects per competing event: ", counts(data.Delta, D))
 println("Maximum survival time: ", maximum(data.T))
-
-# histogram for data summary
-begin
-    histogram(data.T, normalize = :pdf, bins = 20)
-    plot!(times, density_true, linewidth = 2.0)
-    plot!(xlim = (0.0, 1.8), xlabel = "\$t\$", ylabel = "\$f(t)\$", legend = false, size = (480,360))
-end
 
 ##########
 # Setup R
@@ -79,28 +75,21 @@ R"library(cmprsk)"
 # Posterior sampling algorithm
 ##########
 
-# kernel choice
-CompetingRisks.kernel(x::Float64, t::Float64, _::Nothing, kappa::Float64) = CompetingRisks.kernel_DL(x, t, nothing, kappa)
-CompetingRisks.KernelInt(x::Float64, t::Float64, _::Nothing, kappa::Float64) = CompetingRisks.KernelInt_DL(x, t, nothing, kappa)
-
-# resampling step
-CompetingRisks.resample_kappa(_::Restaurants) = (0.0, false)
-
-# create Restaurants
-rf = Restaurants(data, sigma = 0.25, sigma0 = 0.25)
-
-# chain parameters
-nsamples = 2000
+# create CompetingRisksModel
+# cmprsk = CompetingRisksModel(DykstraLaudKernel)
+cmprsk = CompetingRisksModel(DykstraLaudKernel, sigma = 0.25, sigma0 = 0.25)
 
 # setup acceptance rates
-CompetingRisks.stdev_dishes[] = 0.5
+stdevs(dishes = 0.5)
 
 # run chain
-marginal_estimator, conditional_estimator, params = posterior_sampling(rf, nothing, nsamples, times = times, burn_in = 5000)
+marginal_estimator, conditional_estimator, params = posterior_sampling(data, cmprsk, nsamples = 2000, times = times, burn_in = 5000)
 
 ##########
 # Diagnostics
 ##########
+
+println("# Model hyperparameters")
 
 # number of dishes
 (pltrace, plhist) = summary_dishes(params, burn_in = 5000)
@@ -109,7 +98,7 @@ marginal_estimator, conditional_estimator, params = posterior_sampling(rf, nothi
 (pltrace, plhist) = summary_theta(params, burn_in = 5000)
 
 # kernel parameter
-(pltrace, plhist) = summary_gamma(params, burn_in = 5000)
+(pltrace, plhist) = summary_kernelpars(params, :γ, burn_in = 5000)
 
 ##########
 # Posterior estimates: survival function
@@ -190,6 +179,7 @@ plot!(size = (480,360), xlim = (0.0,1.3), ylim = (0.0,0.65))
 ##########
 
 # errors
+println("# Survival errors")
 println("frequentist:\t", error_survival(survival_freq, survival_true))
 println("BNP marginal:\t", error_survival(survival_post, survival_true))
 println("BART:\t", error_survival(survival_post_bart, survival_true))
@@ -213,6 +203,9 @@ begin
     plot!(pl, times, survival_post_bart, linecolor = 2, label = "BART")
     plot!(pl, times, survival_lower_bart, fillrange = survival_upper_bart, linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
+    # save figure
+    savefig("figures_supp/compare_survival.svg")
+
 end
 
 ##########
@@ -220,6 +213,7 @@ end
 ##########
 
 # errors
+println("# Subdistributions errors")
 println("frequentist:\t", error_cumincidence(cumincidence_freq, cumincidence_true))
 println("BNP marginal:\t", error_cumincidence(cumincidence_post, cumincidence_true))
 println("BART:\t", error_cumincidence(cumincidence_post_bart, cumincidence_true))
@@ -242,5 +236,8 @@ begin
     # plot BART estimate
     plot!(pl, times, cumincidence_post_bart, linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
     plot!(pl, times, cumincidence_lower_bart, fillrange = cumincidence_upper_bart, linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
+
+    # save figure
+    savefig("figures_supp/compare_cif.svg")
 
 end

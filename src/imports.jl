@@ -2,7 +2,7 @@
 import DataFrames: DataFrame
 
 # import from Distributions
-import Distributions: UnivariateDistribution, pdf, ccdf, quantile, Uniform, Gamma, Exponential, Normal, Categorical
+import Distributions: pdf, quantile, Uniform, Gamma, Exponential, Normal, Categorical
 
 # import from StatsBase, Statistics
 import StatsBase: autocor

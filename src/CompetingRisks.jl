@@ -1,16 +1,48 @@
+"""
+    module CompetingRisks
+
+Posterior inference, diagnostics and plots for Bayesian nonparametric mixture hazard models for competing risks.
+"""
 module CompetingRisks
 
 # import from packages
 include("imports.jl")
 
+# kernels
+include("kernels.jl")
+
 # export structs
-export Restaurants, CoxModel, Estimator
+export CompetingRisksModel, Estimator
 
 """
-    mutable struct Restaurants
+    struct CompetingRisksModel
+
+Mixture hazard rates model for competing risks. Input for [`posterior_sampling`](@ref).
+"""
+struct CompetingRisksModel
+
+    # kernel parameters
+    KernelType::Type{<:AbstractKernel}
+
+    # CRM parameters
+    beta::Float64           # restaurant-level measures
+    sigma::Float64          # restaurant-level measures
+    beta0::Float64          # base measure
+    sigma0::Float64         # base measure
+
+    # hierarchical flag
+    hierarchical::Bool      # hierarchical model flag
+
+    # regression flag
+    regression::Bool        # regression model flag
+
+end # CompetingRisksModel
 
 """
-mutable struct Restaurants
+    mutable struct Restaurants{KernelType <: AbstractKernel}
+        
+"""
+mutable struct Restaurants{KernelType <: AbstractKernel}
 
     # dimensions
     N::Int64                # number of customers
@@ -41,16 +73,17 @@ mutable struct Restaurants
     KInt::Vector{Float64}       # KernelInt for dishes distinct values (dim k)
     mass_base::Vector{Float64}  # mass_base for observations (dim N)
 
+    # kernel parameters
+    kernelpars::KernelType
+
+    # CRM hyperparameters
+    theta::Float64      # concentration
+
     # CRM parameters
     beta::Float64           # restaurant-level measures
     sigma::Float64          # restaurant-level measures
     beta0::Float64          # base measure
     sigma0::Float64         # base measure
-
-    # model hyperparameters
-    theta::Float64          # concentration
-    alpha::Float64          # kernel height
-    kappa::Float64          # kernel shape
 
     # hierarchical flag
     hierarchical::Bool      # hierarchical model flag
@@ -78,6 +111,8 @@ end # CoxModel
 """
     struct Estimator
 
+Posterior samples to estimate functionals of interest.
+Output of [`posterior_sampling`](@ref) and input for estimation functions [`estimate_survival`](@ref), [`estimate_incidence`](@ref), and [`estimate_proportions`](@ref).
 """
 struct Estimator
 
@@ -105,9 +140,9 @@ include("constants.jl")
 # random measures
 include("random_measures.jl")
 
-# marginal and conditional estimates
+# marginal and posterior estimates
 include("marginal_samples.jl")
-include("conditional_samples.jl")
+include("posterior_samples.jl")
 include("estimates.jl")
 
 # parameters

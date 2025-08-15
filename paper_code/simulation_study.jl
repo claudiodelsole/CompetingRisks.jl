@@ -6,9 +6,10 @@ import Random: seed!
 import Distributions: MixtureModel, LocationScale, Weibull
 import StatsBase: counts
 import Statistics: mean, std
-import Plots: plot, plot!
+import Plots: plot, plot!, savefig
 
 # include auxiliary files
+include("../aux_code/functions.jl")
 include("../aux_code/create_datasets.jl")
 include("../aux_code/errors.jl")
 
@@ -31,7 +32,7 @@ common = MixtureModel([Weibull(1.2), LocationScale(1.0, 1.0, Weibull(3.0))])
 true_models = [MixtureModel([Weibull(1.5), common]), MixtureModel([Weibull(2.0), common]), MixtureModel([Weibull(2.5), common])]
 
 # models summary
-# summary_models(true_models)
+# (plincidence, plprop) = summary_models(true_models)
 
 # times vector
 times = collect(0.0:0.01:2.0)
@@ -60,10 +61,12 @@ mylabels = reshape(["cause " * string(d) for d in range(1, length(true_models))]
 # hazard functions
 plot(legend = :topleft, size = (480,360), xlim = (0.0, 1.65), ylim = (0.0, 1.6), xlabel = "\$t\$", ylabel = "\$h_δ(t)\$")
 plot!(times, hazard_true, linecolor = mycolors, label = mylabels)
+savefig("figures_supp/true_hazard.svg")
 
 # incidence functions
 plot(legend = :topright, size = (480,360), xlim = (0.0, 1.65), ylim = (0.0, 0.48), xlabel = "\$t\$", ylabel = "\$f_δ(t)\$")
 plot!(times, incidence_true, linecolor = mycolors, label = mylabels)
+savefig("figures_supp/true_incidence.svg")
 
 ##########
 # Setup R
@@ -132,16 +135,16 @@ errors_cumincidence = mean_std(errors_cumincidence, 2)
 # Tests results: frequentist estimators
 ##########
 
-println("### Frequentist estimators ###")
+println("# Frequentist estimators")
 println()
 
 # observations counts
-println("--- Observations counts ---")
+println("**Observations counts**")
 println("counts:\t", string(causes_counts))
 println()
 
 # print output
-println("--- Estimation errors ---")
+println("**Estimation errors**")
 
 # survival errors
 println("survival:\t", string(errors_survival.mu), "\t(", string(errors_survival.sd), ")")
@@ -154,15 +157,7 @@ println()
 # Setup Gibbs sampling algorithm
 ##########
 
-# kernel choice
-CompetingRisks.kernel(x::Float64, t::Float64, _::Nothing, kappa::Float64) = CompetingRisks.kernel_DL(x, t, nothing, kappa)
-CompetingRisks.KernelInt(x::Float64, t::Float64, _::Nothing, kappa::Float64) = CompetingRisks.KernelInt_DL(x, t, nothing, kappa)
-
-# resampling step
-CompetingRisks.resample_kappa(_::Restaurants) = (0.0, false)
-
 # chain parameters
-nsamples = 1000
 burn_in, thin = 2500, 10
 
 ##########
@@ -172,7 +167,7 @@ burn_in, thin = 2500, 10
 # initialize diagnostics vectors
 dishes = zeros(num_tests)
 theta = zeros(num_tests)
-alpha = zeros(num_tests)
+gamma = zeros(num_tests)
 
 # initialize error vectors
 errors_survival = zeros(num_tests, 2)
@@ -198,17 +193,17 @@ for test in range(1, num_tests)
     # create synthetic dataset
     data = independent_dataset(N, true_models)
 
-    # create Restaurants
-    # rf = Restaurants(data)
-    rf = Restaurants(data, sigma = 0.25, sigma0 = 0.25)
+    # create CompetingRisksModel
+    # cmprsk = CompetingRisksModel(DykstraLaudKernel)
+    cmprsk = CompetingRisksModel(DykstraLaudKernel, sigma = 0.25, sigma0 = 0.25)
 
     # run chain
-    marginal_estimator, conditional_estimator, params = posterior_sampling(rf, nothing, nsamples, times = times, burn_in = burn_in, nsamples_crms = 10)
+    marginal_estimator, conditional_estimator, params = posterior_sampling(data, cmprsk, times = times, burn_in = burn_in, nsamples_crms = 10)
 
     # diagnostics
     dishes[test] = mean(params.dishes_number[burn_in+thin:thin:end])
     theta[test] = mean(params.theta[burn_in+thin:thin:end])
-    alpha[test] = mean(exp.(params.logalpha[burn_in+thin:thin:end]))
+    gamma[test] = mean(params.kernelpars[burn_in+thin:thin:end])
 
     ### marginal estimator
 
@@ -274,62 +269,62 @@ bandwidth_cumincidence = mean_std(bandwidth_cumincidence, 2)
 # Tests results: restaurant franchise estimators
 ##########
 
-println("### Restaurant franchise estimators ###")
+println("# Restaurant franchise estimators")
 println()
 
 # parameters
-println("--- Parameters ---")
-println("Dishes:\t", mean(dishes))
-println("Theta:\t", mean(theta))
-println("Alpha:\t", mean(alpha))
+println("**Parameters**")
+println("k:\t", mean(dishes), "\t(", string(std(dishes)), ")")
+println("θ:\t", mean(theta), "\t(", string(std(theta)), ")")
+println("γ:\t", mean(gamma), "\t(", string(std(gamma)), ")")
 println()
 
-println("### marginal method")
+println("## Marginal method")
 println()
 
 # survival
-println("--- Survival function ---")
+println("**Survival function**")
 println("error:\t", string(errors_survival.mu[1]), "\t(", string(errors_survival.sd[1]), ")")
 println("inband:\t", string(isinbands_survival.mu[1]), "\t(", string(isinbands_survival.sd[1]), ")")
-println("bandwidth:\t", string(bandwidth_survival.mu[1]), "\t(", string(bandwidth_survival.sd[1]), ")")
+println("bwidth:\t", string(bandwidth_survival.mu[1]), "\t(", string(bandwidth_survival.sd[1]), ")")
 println()
 
 # incidence
-println("--- Incidence functions ---")
+println("**Incidence functions**")
 println("error:\t", string(errors_incidence.mu[:,1]), "\t(", string(errors_incidence.sd[:,1]), ")")
 println("inband:\t", string(mean(isinbands_incidence.mu[:,1])), "\t(", string(mean(isinbands_incidence.sd[:,1])), ")")
-println("bandwidth:\t", string(mean(bandwidth_incidence.mu[:,1])), "\t(", string(mean(bandwidth_incidence.sd[:,1])), ")")
+println("bwidth:\t", string(mean(bandwidth_incidence.mu[:,1])), "\t(", string(mean(bandwidth_incidence.sd[:,1])), ")")
 println()
 
 # cumincidence
-println("--- Cumulative incidence functions ---")
+println("**Cumulative incidence functions**")
 println("error:\t", string(errors_cumincidence.mu[:,1]), "\t(", string(errors_cumincidence.sd[:,1]), ")")
 println("inband:\t", string(mean(isinbands_cumincidence.mu[:,1])), "\t(", string(mean(isinbands_cumincidence.sd[:,1])), ")")
-println("bandwidth:\t", string(mean(bandwidth_cumincidence.mu[:,1])), "\t(", string(mean(bandwidth_cumincidence.sd[:,1])), ")")
+println("bwidth:\t", string(mean(bandwidth_cumincidence.mu[:,1])), "\t(", string(mean(bandwidth_cumincidence.sd[:,1])), ")")
 println()
 
-println("### conditional method")
+println("## Conditional method")
 println()
 
 # survival
-println("--- Survival function ---")
+println("**Survival function**")
 println("error:\t", string(errors_survival.mu[2]), "\t(", string(errors_survival.sd[2]), ")")
 println("inband:\t", string(isinbands_survival.mu[2]), "\t(", string(isinbands_survival.sd[2]), ")")
-println("bandwidth:\t", string(bandwidth_survival.mu[2]), "\t(", string(bandwidth_survival.sd[2]), ")")
+println("bwidth:\t", string(bandwidth_survival.mu[2]), "\t(", string(bandwidth_survival.sd[2]), ")")
 println()
 
 # incidence
-println("--- Incidence functions ---")
+println("**Incidence functions**")
 println("error:\t", string(errors_incidence.mu[:,2]), "\t(", string(errors_incidence.sd[:,2]), ")")
 println("inband:\t", string(mean(isinbands_incidence.mu[:,2])), "\t(", string(mean(isinbands_incidence.sd[:,2])), ")")
-println("bandwidth:\t", string(mean(bandwidth_incidence.mu[:,2])), "\t(", string(mean(bandwidth_incidence.sd[:,2])), ")")
+println("bwidth:\t", string(mean(bandwidth_incidence.mu[:,2])), "\t(", string(mean(bandwidth_incidence.sd[:,2])), ")")
 println()
 
 # cumincidence
-println("--- Cumulative incidence functions ---")
+println("**Cumulative incidence functions**")
 println("error:\t", string(errors_cumincidence.mu[:,2]), "\t(", string(errors_cumincidence.sd[:,2]), ")")
 println("inband:\t", string(mean(isinbands_cumincidence.mu[:,2])), "\t(", string(mean(isinbands_cumincidence.sd[:,2])), ")")
-println("bandwidth:\t", string(mean(bandwidth_cumincidence.mu[:,2])), "\t(", string(mean(bandwidth_cumincidence.sd[:,2])), ")")
+println("bwidth:\t", string(mean(bandwidth_cumincidence.mu[:,2])), "\t(", string(mean(bandwidth_cumincidence.sd[:,2])), ")")
 println()
 
 ##########
@@ -339,7 +334,7 @@ println()
 # initialize diagnostics vectors
 dishes = zeros(num_tests)
 theta = zeros(num_tests)
-alpha = zeros(num_tests)
+gamma = zeros(num_tests)
 
 # initialize error vectors
 errors_survival = zeros(num_tests, 2)
@@ -365,17 +360,17 @@ for test in range(1, num_tests)
     # create synthetic dataset
     data = independent_dataset(N, true_models)
 
-    # create Restaurants
-    # rf = Restaurants(data, hierarchical = false)
-    rf = Restaurants(data, sigma = 0.25, sigma0 = 0.25, hierarchical = false)
+    # create CompetingRisksModel
+    # cmprsk = CompetingRisksModel(DykstraLaudKernel)
+    cmprsk = CompetingRisksModel(DykstraLaudKernel, sigma = 0.25, sigma0 = 0.25, hierarchical = false)
 
     # run chain
-    marginal_estimator, conditional_estimator, params = posterior_sampling(rf, nothing, nsamples, times = times, burn_in = burn_in, nsamples_crms = 10)
+    marginal_estimator, conditional_estimator, params = posterior_sampling(data, cmprsk, times = times, burn_in = burn_in, nsamples_crms = 10)
 
     # diagnostics
     dishes[test] = mean(params.dishes_number[burn_in+thin:thin:end])
     theta[test] = mean(params.theta[burn_in+thin:thin:end])
-    alpha[test] = mean(exp.(params.logalpha[burn_in+thin:thin:end]))
+    gamma[test] = mean(params.kernelpars[burn_in+thin:thin:end])
 
     ### marginal estimator
 
@@ -441,60 +436,60 @@ bandwidth_cumincidence = mean_std(bandwidth_cumincidence, 2)
 # Tests results: restaurant array estimators
 ##########
 
-println("### Restaurant array estimators ###")
+println("# Restaurant array estimators")
 println()
 
 # parameters
-println("--- Parameters ---")
-println("Dishes:\t", mean(dishes))
-println("Theta:\t", mean(theta))
-println("Alpha:\t", mean(alpha))
+println("**Parameters**")
+println("k:\t", mean(dishes), "\t(", string(std(dishes)), ")")
+println("θ:\t", mean(theta), "\t(", string(std(theta)), ")")
+println("γ:\t", mean(gamma), "\t(", string(std(gamma)), ")")
 println()
 
-println("### marginal method")
+println("## Marginal method")
 println()
 
 # survival
-println("--- Survival function ---")
+println("**Survival function**")
 println("error:\t", string(errors_survival.mu[1]), "\t(", string(errors_survival.sd[1]), ")")
 println("inband:\t", string(isinbands_survival.mu[1]), "\t(", string(isinbands_survival.sd[1]), ")")
-println("bandwidth:\t", string(bandwidth_survival.mu[1]), "\t(", string(bandwidth_survival.sd[1]), ")")
+println("bwidth:\t", string(bandwidth_survival.mu[1]), "\t(", string(bandwidth_survival.sd[1]), ")")
 println()
 
 # incidence
-println("--- Incidence functions ---")
+println("**Incidence functions**")
 println("error:\t", string(errors_incidence.mu[:,1]), "\t(", string(errors_incidence.sd[:,1]), ")")
 println("inband:\t", string(mean(isinbands_incidence.mu[:,1])), "\t(", string(mean(isinbands_incidence.sd[:,1])), ")")
-println("bandwidth:\t", string(mean(bandwidth_incidence.mu[:,1])), "\t(", string(mean(bandwidth_incidence.sd[:,1])), ")")
+println("bwidth:\t", string(mean(bandwidth_incidence.mu[:,1])), "\t(", string(mean(bandwidth_incidence.sd[:,1])), ")")
 println()
 
 # cumincidence
-println("--- Cumulative incidence functions ---")
+println("**Cumulative incidence functions**")
 println("error:\t", string(errors_cumincidence.mu[:,1]), "\t(", string(errors_cumincidence.sd[:,1]), ")")
 println("inband:\t", string(mean(isinbands_cumincidence.mu[:,1])), "\t(", string(mean(isinbands_cumincidence.sd[:,1])), ")")
-println("bandwidth:\t", string(mean(bandwidth_cumincidence.mu[:,1])), "\t(", string(mean(bandwidth_cumincidence.sd[:,1])), ")")
+println("bwidth:\t", string(mean(bandwidth_cumincidence.mu[:,1])), "\t(", string(mean(bandwidth_cumincidence.sd[:,1])), ")")
 println()
 
-println("### conditional method")
+println("## Conditional method")
 println()
 
 # survival
-println("--- Survival function ---")
+println("**Survival function**")
 println("error:\t", string(errors_survival.mu[2]), "\t(", string(errors_survival.sd[2]), ")")
 println("inband:\t", string(isinbands_survival.mu[2]), "\t(", string(isinbands_survival.sd[2]), ")")
-println("bandwidth:\t", string(bandwidth_survival.mu[2]), "\t(", string(bandwidth_survival.sd[2]), ")")
+println("bwidth:\t", string(bandwidth_survival.mu[2]), "\t(", string(bandwidth_survival.sd[2]), ")")
 println()
 
 # incidence
-println("--- Incidence functions ---")
+println("**Incidence functions**")
 println("error:\t", string(errors_incidence.mu[:,2]), "\t(", string(errors_incidence.sd[:,2]), ")")
 println("inband:\t", string(mean(isinbands_incidence.mu[:,2])), "\t(", string(mean(isinbands_incidence.sd[:,2])), ")")
-println("bandwidth:\t", string(mean(bandwidth_incidence.mu[:,2])), "\t(", string(mean(bandwidth_incidence.sd[:,2])), ")")
+println("bwidth:\t", string(mean(bandwidth_incidence.mu[:,2])), "\t(", string(mean(bandwidth_incidence.sd[:,2])), ")")
 println()
 
 # cumincidence
-println("--- Cumulative incidence functions ---")
+println("**Cumulative incidence functions**")
 println("error:\t", string(errors_cumincidence.mu[:,2]), "\t(", string(errors_cumincidence.sd[:,2]), ")")
 println("inband:\t", string(mean(isinbands_cumincidence.mu[:,2])), "\t(", string(mean(isinbands_cumincidence.sd[:,2])), ")")
-println("bandwidth:\t", string(mean(bandwidth_cumincidence.mu[:,2])), "\t(", string(mean(bandwidth_cumincidence.sd[:,2])), ")")
+println("bwidth:\t", string(mean(bandwidth_cumincidence.mu[:,2])), "\t(", string(mean(bandwidth_cumincidence.sd[:,2])), ")")
 println()
