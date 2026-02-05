@@ -80,15 +80,15 @@ println("# Model hyperparameters")
 
 # number of dishes
 plot(summary_dishes(params, burn_in = 5000)[2], size = (480,360), xlim = (0.0, 25.0))
-savefig("figures_supp/ebmt_dishes.svg")
+savefig("figures_supp/ebmt_dishes.pdf")
 
 # base measure mass
 plot(summary_theta(params, burn_in = 5000)[2], size = (480,360), xlim = (0.0, 0.8))
-savefig("figures_supp/ebmt_theta.svg")
+savefig("figures_supp/ebmt_theta.pdf")
 
 # kernel shape parameter
 plot(summary_kernelpars(params, :κ, burn_in = 5000)[2], size = (480,360), xlim = (0.0,2.0))
-savefig("figures_supp/ebmt_kappa.svg")
+savefig("figures_supp/ebmt_kappa.pdf")
 
 ##########
 # Posterior estimates: hazard rate ratio
@@ -102,7 +102,7 @@ R"summary(coxfit)"
 (pltrace, hist) = summary_coefficients(params, 1, burn_in = 5000)
 # plot(pltrace, size = (480,360), xlim = (0,2500), ylim = (-0.55, 0.55))
 plot(hist, size = (480,360), xlim = (-0.55, 0.55))
-savefig("figures_supp/ebmt_coeffs.svg")
+savefig("figures_supp/ebmt_coeffs.pdf")
 
 # estimate hazard ratio
 # (pltrace, hist) = summary_coefficients(params, 1, burn_in = 5000, hazard_ratio = true)
@@ -127,7 +127,7 @@ survival_freq = rcopy(R"km")
 # plots for bone marrow cells
 plot_survival(times, survival_post[:,1], kaplan_meier = survival_freq[:,1], lower = survival_lower[:,1], upper = survival_upper[:,1])
 plot!(size = (480,360), xlim = (0.0,5.5), xlabel = "\$t\$ (years)")
-savefig("figures/ebmt_survival.svg")
+savefig("figures/ebmt_survival.pdf")
 
 # plots for blood cells
 # plot_survival(times, survival_post[:,2], kaplan_meier = survival_freq[:,2], lower = survival_lower[:,2], upper = survival_upper[:,2])
@@ -155,7 +155,7 @@ cumincidence_freq = cat(mapslices(values -> timepoints(rcopy(R"cif.GvHD[,1]"), v
 # plots for bone marrow cells
 plot_incidence(times, cumincidence_post[:,1,:], cum = true, aalen_johansen = cumincidence_freq[:,1,:], lower = cumincidence_lower[:,1,:], upper = cumincidence_upper[:,1,:], mycolors = [2, 3], mylabels = ["GvHD", "death/relapse"])
 plot!(size = (480,360), xlim = (0.0,5.5), ylim = (0.0,0.65), xlabel = "\$t\$ (years)")
-savefig("figures/ebmt_cumincidence.svg")
+savefig("figures/ebmt_cumincidence.pdf")
 
 # plots for blood cells
 # plot_incidence(times, cumincidence_post[:,2,:], cum = true, aalen_johansen = cumincidence_freq[:,2,:], lower = cumincidence_lower[:,2,:], upper = cumincidence_upper[:,2,:], mycolors = [2, 3], mylabels = ["GvHD", "death/relapse"])
@@ -172,7 +172,7 @@ savefig("figures/ebmt_cumincidence.svg")
 plot_proportions(times, proportions_post, lower = proportions_lower, upper = proportions_upper, mycolors = [2, 3], mylabels = ["GvHD", "death/relapse"])
 plot!(size = (480,360), xlim = (0.0,5.5), xlabel = "\$t\$ (years)")
 vline!([maximum(data.T[data.Delta.!=0])], linestyle = :dashdot, linecolor = :black, linealpha = 0.5, label = false)
-savefig("figures/ebmt_prediction.svg")
+savefig("figures/ebmt_prediction.pdf")
 
 ##########
 # BART for competing risks
@@ -225,22 +225,21 @@ plot!(size = (480,360), xlim = (0.0,5.5), ylim = (0.0,0.65), xlabel = "\$t\$ (ye
 begin
 
     # initialize plot
-    pl = plot(ylim = (0.0, 1.0), xlabel = "\$t\$", ylabel = "\$S(t)\$") 
-    plot!(xlim = (0.0,5.5), size = (480,360), xlabel = "\$t\$ (years)")
+    plot(size = (480,360), xlabel = "\$t\$ (years)", ylabel = "\$S(t)\$", xlim = (0.0,5.5), ylim = (0.0, 1.0))
 
     # plot frequentist estimate
-    plot!(pl, times, survival_freq[:,1], linecolor = :black, label = "freq")
+    plot!(times, survival_freq[:,1], linecolor = :black, label = "freq")
 
     # plot hCRM estimate
-    plot!(pl, times, survival_post[:,1], linecolor = 1, label = "hCRM")
-    plot!(pl, times, survival_lower[:,1], fillrange = survival_upper[:,1], linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post[:,1], linecolor = 1, label = "hCRM")
+    plot!(times, survival_lower[:,1], fillrange = survival_upper[:,1], linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, survival_post_bart[:,1], linecolor = 2, label = "BART")
-    plot!(pl, times, survival_lower_bart[:,1], fillrange = survival_upper_bart[:,1], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post_bart[:,1], linecolor = 2, label = "BART")
+    plot!(times, survival_lower_bart[:,1], fillrange = survival_upper_bart[:,1], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_ebmt_survival_bm.svg")
+    savefig("figures_supp/compare_ebmt_survival_bm.pdf")
 
 end
 
@@ -248,22 +247,21 @@ end
 begin
 
     # initialize plot
-    pl = plot(ylim = (0.0, 1.0), xlabel = "\$t\$", ylabel = "\$S(t)\$") 
-    plot!(xlim = (0.0,5.5), size = (480,360), xlabel = "\$t\$ (years)")
+    plot(size = (480,360), xlabel = "\$t\$ (years)", ylabel = "\$S(t)\$", xlim = (0.0,5.5), ylim = (0.0, 1.0))
 
     # plot frequentist estimate
-    plot!(pl, times, survival_freq[:,2], linecolor = :black, label = "freq")
+    plot!(times, survival_freq[:,2], linecolor = :black, label = "freq")
 
     # plot hCRM estimate
-    plot!(pl, times, survival_post[:,2], linecolor = 1, label = "hCRM")
-    plot!(pl, times, survival_lower[:,2], fillrange = survival_upper[:,2], linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post[:,2], linecolor = 1, label = "hCRM")
+    plot!(times, survival_lower[:,2], fillrange = survival_upper[:,2], linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, survival_post_bart[:,2], linecolor = 2, label = "BART")
-    plot!(pl, times, survival_lower_bart[:,2], fillrange = survival_upper_bart[:,2], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post_bart[:,2], linecolor = 2, label = "BART")
+    plot!(times, survival_lower_bart[:,2], fillrange = survival_upper_bart[:,2], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_ebmt_survival_blood.svg")
+    savefig("figures_supp/compare_ebmt_survival_blood.pdf")
 
 end
 
@@ -275,24 +273,23 @@ end
 begin
 
     # initialize plot
-    pl = plot(xlabel = "\$t\$", ylabel = "\$F_\\delta(t)\$")
-    plot!(size = (480,360), xlim = (0.0,5.5), ylim = (0.0,0.65), xlabel = "\$t\$ (years)", legend = :topleft)
+    plot(size = (480,360), xlabel = "\$t\$ (years)", ylabel = "\$F_\\delta(t)\$", xlim = (0.0,5.5), ylim = (0.0,0.65), legend = :topleft)
 
     # plot frequentist estimate
-    plot!(pl, times, cumincidence_freq[:,1,:], linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
+    plot!(times, cumincidence_freq[:,1,:], linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
 
     # plot hCRM estimate
-    plot!(pl, times, cumincidence_post[:,1,:], linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
-    plot!(pl, times, cumincidence_lower[:,1,:], fillrange = cumincidence_upper[:,1,:], 
+    plot!(times, cumincidence_post[:,1,:], linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
+    plot!(times, cumincidence_lower[:,1,:], fillrange = cumincidence_upper[:,1,:], 
                 linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, cumincidence_post_bart[:,1,:], linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
-    plot!(pl, times, cumincidence_lower_bart[:,1,:], fillrange = cumincidence_upper_bart[:,1,:], 
+    plot!(times, cumincidence_post_bart[:,1,:], linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
+    plot!(times, cumincidence_lower_bart[:,1,:], fillrange = cumincidence_upper_bart[:,1,:], 
                 linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_ebmt_cumincidence_bm.svg")
+    savefig("figures_supp/compare_ebmt_cumincidence_bm.pdf")
 
 end
 
@@ -300,23 +297,22 @@ end
 begin
 
     # initialize plot
-    pl = plot(xlabel = "\$t\$", ylabel = "\$F_\\delta(t)\$")
-    plot!(size = (480,360), xlim = (0.0,5.5), ylim = (0.0,0.65), xlabel = "\$t\$ (years)", legend = :topleft)
+    plot(size = (480,360), xlabel = "\$t\$", ylabel = "\$F_\\delta(t)\$", xlim = (0.0,5.5), ylim = (0.0,0.65), legend = :topleft)
 
     # plot frequentist estimate
-    plot!(pl, times, cumincidence_freq[:,2,:], linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
+    plot!(times, cumincidence_freq[:,2,:], linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
 
     # plot hCRM estimate
-    plot!(pl, times, cumincidence_post[:,2,:], linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
-    plot!(pl, times, cumincidence_lower[:,2,:], fillrange = cumincidence_upper[:,2,:], 
+    plot!(times, cumincidence_post[:,2,:], linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
+    plot!(times, cumincidence_lower[:,2,:], fillrange = cumincidence_upper[:,2,:], 
                 linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, cumincidence_post_bart[:,2,:], linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
-    plot!(pl, times, cumincidence_lower_bart[:,2,:], fillrange = cumincidence_upper_bart[:,2,:], 
+    plot!(times, cumincidence_post_bart[:,2,:], linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
+    plot!(times, cumincidence_lower_bart[:,2,:], fillrange = cumincidence_upper_bart[:,2,:], 
                 linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_ebmt_cumincidence_blood.svg")
+    savefig("figures_supp/compare_ebmt_cumincidence_blood.pdf")
 
 end

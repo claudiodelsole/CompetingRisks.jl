@@ -92,11 +92,11 @@ function tail_integral(logheight::Float64, beta::Float64, sigma::Float64)
         return tail_integral(logheight, beta)
     end
 
-    if logheight < -500.0   # asymptotic behaviour
-        return exp( - sigma * logheight ) / ( sigma * gamma(1.0-sigma) )
+    if log(beta) + logheight < - 100.0  # asymptotic behaviour
+        return exp( - sigma * logheight ) / ( sigma * gamma(1.0 - sigma) )
     end
 
-    return (beta)^sigma * gamma( - sigma, beta * exp(logheight) ) / gamma(1.0-sigma)
+    return (beta)^sigma * gamma( - sigma, beta * exp(logheight) ) / gamma(1.0 - sigma)
 
 end # tail_integral
 
@@ -106,7 +106,7 @@ end # tail_integral
 """
 function tail_integral(logheight::Float64, beta::Float64)
 
-    if logheight < -100.0   # asymptotic behaviour
+    if log(beta) + logheight < - 100.0  # asymptotic behaviour
         return - eulergamma - log(beta) - logheight
     end
 
@@ -124,11 +124,11 @@ function tail_integral_grad(logheight::Float64, beta::Float64, sigma::Float64)
         return tail_integral_grad(logheight, beta)
     end
 
-    if logheight < -100.0   # asymptotic behaviour
-        return - exp( - sigma * logheight ) / gamma(1.0-sigma)
+    if log(beta) + logheight < - 100.0  # asymptotic behaviour
+        return - exp( - sigma * logheight ) / gamma(1.0 - sigma)
     end
 
-    return - exp( - sigma * logheight - beta * exp(logheight) ) / gamma(1.0-sigma)
+    return - exp( - sigma * logheight - beta * exp(logheight) ) / gamma(1.0 - sigma)
 
 end # tail_integral_grad
 
@@ -138,7 +138,7 @@ end # tail_integral_grad
 """
 function tail_integral_grad(logheight::Float64, beta::Float64)
 
-    if logheight < -100.0   # asymptotic behaviour
+    if log(beta) + logheight < - 100.0  # asymptotic behaviour
         return - 1.0
     end
 

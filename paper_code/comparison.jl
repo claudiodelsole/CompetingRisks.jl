@@ -188,23 +188,22 @@ println("BART:\t", error_survival(survival_post_bart, survival_true))
 begin
     
     # initialize plot
-    pl = plot(ylim = (0.0, 1.0), xlabel = "\$t\$", ylabel = "\$S(t)\$") 
-    plot!(xlim = (0.0, 1.3), size = (480,360))
+    plot(size = (480,360), xlim = (0.0, 1.3), ylim = (0.0, 1.0), xlabel = "\$t\$", ylabel = "\$S(t)\$")
 
     # plot frequentist estimate
-    plot!(pl, times, survival_true, linecolor = 3, label = "true")
-    plot!(pl, times, survival_freq, linecolor = :black, label = "freq")
+    plot!(times, survival_true, linecolor = 3, label = "true")
+    plot!(times, survival_freq, linecolor = :black, label = "freq")
 
     # plot hCRM estimate
-    plot!(pl, times, survival_post, linecolor = 1, label = "hCRM")
-    plot!(pl, times, survival_lower, fillrange = survival_upper, linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post, linecolor = 1, label = "hCRM")
+    plot!(times, survival_lower, fillrange = survival_upper, linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, survival_post_bart, linecolor = 2, label = "BART")
-    plot!(pl, times, survival_lower_bart, fillrange = survival_upper_bart, linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post_bart, linecolor = 2, label = "BART")
+    plot!(times, survival_lower_bart, fillrange = survival_upper_bart, linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_survival.svg")
+    savefig("figures_supp/compare_survival.pdf")
 
 end
 
@@ -222,22 +221,21 @@ println("BART:\t", error_cumincidence(cumincidence_post_bart, cumincidence_true)
 begin
 
     # initialize plot
-    pl = plot(xlabel = "\$t\$", ylabel = "\$F_\\delta(t)\$")
-    plot!(size = (480,360), xlim = (0.0,1.3), ylim = (0.0,0.65))
+    plot(size = (480,360), xlim = (0.0,1.3), ylim = (0.0,0.65), xlabel = "\$t\$", ylabel = "\$F_\\delta(t)\$")
 
     # plot frequentist estimate
-    plot!(pl, times, cumincidence_true, linecolor = 3, linestyle = [:solid :dash], label = ["true" false])
-    plot!(pl, times, cumincidence_freq, linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
+    plot!(times, cumincidence_true, linecolor = 3, linestyle = [:solid :dash], label = ["true" false])
+    plot!(times, cumincidence_freq, linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
 
     # plot hCRM estimate
-    plot!(pl, times, cumincidence_post, linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
-    plot!(pl, times, cumincidence_lower, fillrange = cumincidence_upper, linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
+    plot!(times, cumincidence_post, linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
+    plot!(times, cumincidence_lower, fillrange = cumincidence_upper, linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, cumincidence_post_bart, linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
-    plot!(pl, times, cumincidence_lower_bart, fillrange = cumincidence_upper_bart, linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
+    plot!(times, cumincidence_post_bart, linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
+    plot!(times, cumincidence_lower_bart, fillrange = cumincidence_upper_bart, linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_cif.svg")
+    savefig("figures_supp/compare_cumincidence.pdf")
 
 end

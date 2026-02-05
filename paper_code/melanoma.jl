@@ -84,15 +84,15 @@ println("# Model hyperparameters")
 
 # number of dishes
 plot(summary_dishes(params, burn_in = 5000)[2], size = (480,360), xlim = (0.0, 13.0))
-savefig("figures_supp/melanoma_dishes.svg")
+savefig("figures_supp/melanoma_dishes.pdf")
 
 # base measure mass
 plot(summary_theta(params, burn_in = 5000)[2], size = (480,360), xlim = (0.0, 0.4))
-savefig("figures_supp/melanoma_theta.svg")
+savefig("figures_supp/melanoma_theta.pdf")
 
 # kernel shape parameter
 plot(summary_kernelpars(params, :κ, burn_in = 5000)[2], size = (480,360), xlim = (-8.0, 1.0))
-savefig("figures_supp/melanoma_kappa.svg")
+savefig("figures_supp/melanoma_kappa.pdf")
 
 ##########
 # Posterior estimates: hazard rate ratio
@@ -106,7 +106,7 @@ R"summary(coxfit)"
 (pltrace, hist) = summary_coefficients(params, 1, burn_in = 5000)
 # plot(pltrace, size = (480,360), xlim = (0,2500), ylim = (-0.5, 1.5))
 plot(hist, size = (480,360), xlim = (-0.5, 1.5))
-savefig("figures_supp/melanoma_coeffs.svg")
+savefig("figures_supp/melanoma_coeffs.pdf")
 
 # estimate hazard ratio
 # (pltrace, hist) = summary_coefficients(params, 1, burn_in = 5000, hazard_ratio = true)
@@ -131,12 +131,12 @@ survival_freq = rcopy(R"km")
 # plots for females
 plot_survival(times, survival_post[:,1], kaplan_meier = survival_freq[:,1], lower = survival_lower[:,1], upper = survival_upper[:,1])
 plot!(xlim = (0.0,8.5), size = (480,360), xlabel = "\$t\$ (years)")
-savefig("figures_supp/melanoma_survival_female.svg")
+savefig("figures_supp/melanoma_survival_female.pdf")
 
 # plots for males
 plot_survival(times, survival_post[:,2], kaplan_meier = survival_freq[:,2], lower = survival_lower[:,2], upper = survival_upper[:,2])
 plot!(xlim = (0.0,8.5), size = (480,360), xlabel = "\$t\$ (years)")
-savefig("figures_supp/melanoma_survival_male.svg")
+savefig("figures_supp/melanoma_survival_male.pdf")
 
 ##########
 # Posterior estimates: cumulative incidence functions
@@ -160,12 +160,12 @@ cumincidence_freq = cat(mapslices(values -> timepoints(rcopy(R"cif.melanoma[,1]"
 # plots for females
 plot_incidence(times, cumincidence_post[:,1,:], cum = true, aalen_johansen = cumincidence_freq[:,1,:], lower = cumincidence_lower[:,1,:], upper = cumincidence_upper[:,1,:], mycolors = [2, 3], mylabels = ["melanoma", "others"])
 plot!(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (years)", legend = :topleft)
-savefig("figures_supp/melanoma_cumincidence_female.svg")
+savefig("figures_supp/melanoma_cumincidence_female.pdf")
 
 # plots for males
 plot_incidence(times, cumincidence_post[:,2,:], cum = true, aalen_johansen = cumincidence_freq[:,2,:], lower = cumincidence_lower[:,2,:], upper = cumincidence_upper[:,2,:], mycolors = [2, 3], mylabels = ["melanoma", "others"])
 plot!(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (years)", legend = :topleft)
-savefig("figures_supp/melanoma_cumincidence_male.svg")
+savefig("figures_supp/melanoma_cumincidence_male.pdf")
 
 ##########
 # Posterior estimates: prediction curves
@@ -178,7 +178,7 @@ savefig("figures_supp/melanoma_cumincidence_male.svg")
 plot_proportions(times, proportions_post, lower = proportions_lower, upper = proportions_upper, mycolors = [2, 3], mylabels = ["melanoma", "others"])
 plot!(size = (480,360), xlim = (0.0,8.5), xlabel = "\$t\$ (years)")
 vline!([maximum(data.T[data.Delta.!=0])], linestyle = :dashdot, linecolor = :black, linealpha = 0.5, label = false)
-savefig("figures/melanoma_prediction.svg")
+savefig("figures/melanoma_prediction.pdf")
 
 ##########
 # BART for competing risks
@@ -231,22 +231,21 @@ plot!(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (yea
 begin
 
     # initialize plot
-    pl = plot(ylim = (0.0, 1.0), xlabel = "\$t\$", ylabel = "\$S(t)\$") 
-    plot!(xlim = (0.0,8.5), size = (480,360), xlabel = "\$t\$ (years)")
+    plot(size = (480,360), xlim = (0.0,8.5), ylim = (0.0, 1.0), xlabel = "\$t\$ (years)", ylabel = "\$S(t)\$") 
 
     # plot frequentist estimate
-    plot!(pl, times, survival_freq[:,1], linecolor = :black, label = "freq")
+    plot!(times, survival_freq[:,1], linecolor = :black, label = "freq")
 
     # plot hCRM estimate
-    plot!(pl, times, survival_post[:,1], linecolor = 1, label = "hCRM")
-    plot!(pl, times, survival_lower[:,1], fillrange = survival_upper[:,1], linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post[:,1], linecolor = 1, label = "hCRM")
+    plot!(times, survival_lower[:,1], fillrange = survival_upper[:,1], linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, survival_post_bart[:,1], linecolor = 2, label = "BART")
-    plot!(pl, times, survival_lower_bart[:,1], fillrange = survival_upper_bart[:,1], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post_bart[:,1], linecolor = 2, label = "BART")
+    plot!(times, survival_lower_bart[:,1], fillrange = survival_upper_bart[:,1], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_melanoma_survival_female.svg")
+    savefig("figures_supp/compare_melanoma_survival_female.pdf")
 
 end
 
@@ -254,22 +253,21 @@ end
 begin
 
     # initialize plot
-    pl = plot(ylim = (0.0, 1.0), xlabel = "\$t\$", ylabel = "\$S(t)\$") 
-    plot!(xlim = (0.0,8.5), size = (480,360), xlabel = "\$t\$ (years)")
+    plot(size = (480,360), xlim = (0.0,8.5), ylim = (0.0, 1.0), xlabel = "\$t\$ (years)", ylabel = "\$S(t)\$") 
 
     # plot frequentist estimate
-    plot!(pl, times, survival_freq[:,2], linecolor = :black, label = "freq")
+    plot!(times, survival_freq[:,2], linecolor = :black, label = "freq")
 
     # plot hCRM estimate
-    plot!(pl, times, survival_post[:,2], linecolor = 1, label = "hCRM")
-    plot!(pl, times, survival_lower[:,2], fillrange = survival_upper[:,2], linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post[:,2], linecolor = 1, label = "hCRM")
+    plot!(times, survival_lower[:,2], fillrange = survival_upper[:,2], linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, survival_post_bart[:,2], linecolor = 2, label = "BART")
-    plot!(pl, times, survival_lower_bart[:,2], fillrange = survival_upper_bart[:,2], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
+    plot!(times, survival_post_bart[:,2], linecolor = 2, label = "BART")
+    plot!(times, survival_lower_bart[:,2], fillrange = survival_upper_bart[:,2], linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_melanoma_survival_male.svg")
+    savefig("figures_supp/compare_melanoma_survival_male.pdf")
 
 end
 
@@ -281,24 +279,23 @@ end
 begin
 
     # initialize plot
-    pl = plot(xlabel = "\$t\$", ylabel = "\$F_\\delta(t)\$")
-    plot!(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (years)", legend = :topleft)
+    plot(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (years)", ylabel = "\$F_\\delta(t)\$", legend = :topleft)
 
     # plot frequentist estimate
-    plot!(pl, times, cumincidence_freq[:,1,:], linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
+    plot!(times, cumincidence_freq[:,1,:], linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
 
     # plot hCRM estimate
-    plot!(pl, times, cumincidence_post[:,1,:], linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
-    plot!(pl, times, cumincidence_lower[:,1,:], fillrange = cumincidence_upper[:,1,:], 
+    plot!(times, cumincidence_post[:,1,:], linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
+    plot!(times, cumincidence_lower[:,1,:], fillrange = cumincidence_upper[:,1,:], 
                 linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, cumincidence_post_bart[:,1,:], linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
-    plot!(pl, times, cumincidence_lower_bart[:,1,:], fillrange = cumincidence_upper_bart[:,1,:], 
+    plot!(times, cumincidence_post_bart[:,1,:], linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
+    plot!(times, cumincidence_lower_bart[:,1,:], fillrange = cumincidence_upper_bart[:,1,:], 
                 linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_melanoma_cumincidence_female.svg")
+    savefig("figures_supp/compare_melanoma_cumincidence_female.pdf")
 
 end
 
@@ -306,23 +303,22 @@ end
 begin
 
     # initialize plot
-    pl = plot(xlabel = "\$t\$", ylabel = "\$F_\\delta(t)\$")
-    plot!(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (years)", legend = :topleft)
+    plot(size = (480,360), xlim = (0.0,8.5), ylim = (0.0,0.6), xlabel = "\$t\$ (years)", ylabel = "\$F_\\delta(t)\$", legend = :topleft)
 
     # plot frequentist estimate
-    plot!(pl, times, cumincidence_freq[:,2,:], linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
+    plot!(times, cumincidence_freq[:,2,:], linecolor = :black, linestyle = [:solid :dash], label = ["freq" false])
 
     # plot hCRM estimate
-    plot!(pl, times, cumincidence_post[:,2,:], linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
-    plot!(pl, times, cumincidence_lower[:,2,:], fillrange = cumincidence_upper[:,2,:], 
+    plot!(times, cumincidence_post[:,2,:], linecolor = 1, linestyle = [:solid :dash], label = ["hCRM" false])
+    plot!(times, cumincidence_lower[:,2,:], fillrange = cumincidence_upper[:,2,:], 
                 linecolor = 1, linealpha = 0.0, fillcolor = 1, fillalpha = 0.2, primary = false)
 
     # plot BART estimate
-    plot!(pl, times, cumincidence_post_bart[:,2,:], linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
-    plot!(pl, times, cumincidence_lower_bart[:,2,:], fillrange = cumincidence_upper_bart[:,2,:], 
+    plot!(times, cumincidence_post_bart[:,2,:], linecolor = 2, linestyle = [:solid :dash], label = ["BART" false])
+    plot!(times, cumincidence_lower_bart[:,2,:], fillrange = cumincidence_upper_bart[:,2,:], 
                 linecolor = 2, linealpha = 0.0, fillcolor = 2, fillalpha = 0.2, primary = false)
 
     # save figure
-    savefig("figures_supp/compare_melanoma_cumincidence_male.svg")
+    savefig("figures_supp/compare_melanoma_cumincidence_male.pdf")
 
 end

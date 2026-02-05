@@ -1,5 +1,5 @@
 # export structs
-export DykstraLaudKernel, OrnsteinUhlenbeckKernel, RectKernel
+export DykstraLaudKernel, OrnsteinUhlenbeckKernel, RectangularKernel
 
 # create abstract type
 abstract type AbstractKernel end
@@ -9,7 +9,7 @@ abstract type AbstractKernel end
 
 Parameters of Dykstra-Laud kernel: `γ::Float64` is the kernel height.
 
-See also [`OrnsteinUhlenbeckKernel`](@ref), [`RectKernel`](@ref).
+See also [`OrnsteinUhlenbeckKernel`](@ref), [`RectangularKernel`](@ref).
 """
 struct DykstraLaudKernel <: AbstractKernel
 
@@ -23,7 +23,7 @@ end # struct
 
 Parameters of Ornstein-Uhlenbeck kernel: `κ::Float64` is the kernel rate.
 
-See also [`DykstraLaudKernel`](@ref), [`RectKernel`](@ref).
+See also [`DykstraLaudKernel`](@ref), [`RectangularKernel`](@ref).
 """
 struct OrnsteinUhlenbeckKernel <: AbstractKernel
 
@@ -33,13 +33,13 @@ struct OrnsteinUhlenbeckKernel <: AbstractKernel
 end # struct
 
 """
-    struct RectKernel <: AbstractKernel
+    struct RectangularKernel <: AbstractKernel
 
 Parameters of rectangular kernel: `γ::Float64` is the kernel height, `τ::Float64` is the bandwidth.
 
 See also [`DykstraLaudKernel`](@ref), [`OrnsteinUhlenbeckKernel`](@ref).
 """
-struct RectKernel <: AbstractKernel
+struct RectangularKernel <: AbstractKernel
 
     # parameters
     γ::Float64      # height
@@ -59,7 +59,7 @@ DykstraLaudKernel() = DykstraLaudKernel(1.0)
 OrnsteinUhlenbeckKernel() = OrnsteinUhlenbeckKernel(1.0)
 
 # rectangular kernel
-RectKernel() = RectKernel(1.0, 1.0)
+RectangularKernel() = RectangularKernel(1.0, 1.0)
 
 """
     vectorize(kernelpars::KernelType) where KernelType <: AbstractKernel
@@ -73,7 +73,7 @@ vectorize(kernelpars::DykstraLaudKernel) = [kernelpars.γ]
 vectorize(kernelpars::OrnsteinUhlenbeckKernel) = [kernelpars.κ]
 
 # rectangular kernel
-vectorize(kernelpars::RectKernel) = [kernelpars.γ, kernelpars.τ]
+vectorize(kernelpars::RectangularKernel) = [kernelpars.γ, kernelpars.τ]
 
 """
     kernel(x::Float64, t::Float64, _::Nothing, kernelpars::KernelType) where KernelType <: AbstractKernel
@@ -106,5 +106,5 @@ kernel(x::Float64, t::Float64, kernelpars::OrnsteinUhlenbeckKernel) = (x <= t) ?
 KernelInt(x::Float64, t::Float64, kernelpars::OrnsteinUhlenbeckKernel) = (x <= t) ? sqrt(2.0 / kernelpars.κ) * (1.0 - exp( - kernelpars.κ * (t-x) )) : 0.0
 
 # rectangular kernel
-kernel(x::Float64, t::Float64, kernelpars::RectKernel) = (x <= t <= x + kernelpars.τ) ? kernelpars.γ : 0.0
-KernelInt(x::Float64, t::Float64, kernelpars::RectKernel) = if (x <= t <= x + kernelpars.τ) return kernelpars.γ * (t-x) elseif (x + kernelpars.τ <= t) return kernelpars.γ * (kernelpars.τ - x) else return 0.0 end
+kernel(x::Float64, t::Float64, kernelpars::RectangularKernel) = (x <= t <= x + kernelpars.τ) ? kernelpars.γ : 0.0
+KernelInt(x::Float64, t::Float64, kernelpars::RectangularKernel) = if (x <= t <= x + kernelpars.τ) return kernelpars.γ * (t-x) elseif (x + kernelpars.τ <= t) return kernelpars.γ * kernelpars.τ else return 0.0 end

@@ -36,7 +36,7 @@ plot!(plprop, size = (480,360))
 data = independent_dataset(N, true_models)
 
 # times vector
-times = collect(0.0:0.01:2.0)
+times = collect(0.0:0.01:2.5)
 
 # true survival function
 survival_true = [prod([survival(model, t) for model in true_models]) for t in times]
@@ -60,7 +60,7 @@ println("Maximum survival time: ", maximum(data.T))
 histogram(data.T, normalize = :pdf, bins = 20)
 plot!(times, density_true, linewidth = 2.0)
 plot!(xlim = (0.0, 1.8), xlabel = "\$t\$", ylabel = "\$f(t)\$", legend = false, size = (480,360))
-savefig("figures_supp/histogram.svg")
+savefig("figures_supp/histogram.pdf")
 
 ##########
 # Setup R
@@ -89,8 +89,8 @@ cmprsk = CompetingRisksModel(DykstraLaudKernel, sigma = 0.25, sigma0 = 0.25)
 stdevs(dishes = 0.5)
 
 # run chain
-# @profview posterior_sampling(data, cmprsk, nsamples = 2000, times = times, burn_in = 5000)
-marginal_estimator, posterior_estimator, params = posterior_sampling(data, cmprsk, nsamples = 2000, times = times, burn_in = 5000)
+# @profview posterior_sampling(data, cmprsk, nsamples = 2000, times = times, burn_in = 5000, nsamples_crms = 10)
+marginal_estimator, posterior_estimator, params = posterior_sampling(data, cmprsk, nsamples = 2000, times = times, burn_in = 5000, nsamples_crms = 10)
 
 ##########
 # Posterior estimates: survival function
@@ -115,7 +115,7 @@ println("BNP marginal:\t", error_survival(survival_post, survival_true))
 # plots
 plot_survival(times, survival_post, survival_true = survival_true, kaplan_meier = survival_freq, lower = survival_lower, upper = survival_upper)
 plot!(xlim = (0.0,1.3), size = (480,360))
-savefig("figures/survival.svg")
+savefig("figures/survival.pdf")
 
 ##########
 # Posterior estimates: incidence functions
@@ -128,7 +128,7 @@ savefig("figures/survival.svg")
 # plots
 plot_incidence(times, incidence_post, incidence_true = incidence_true, lower = incidence_lower, upper = incidence_upper)
 plot!(size = (480,360), xlim = (0.0,1.3), ylim = (0.0,0.9))
-savefig("figures/incidence.svg")
+savefig("figures/incidence.pdf")
 
 ##########
 # Posterior estimates: cumulative incidence functions
@@ -149,7 +149,7 @@ cumincidence_freq = mapslices(values -> map(x -> ismissing(x) ? maximum(skipmiss
 # plots
 plot_incidence(times, cumincidence_post, cum = true, incidence_true = cumincidence_true, aalen_johansen = cumincidence_freq, lower = cumincidence_lower, upper = cumincidence_upper)
 plot!(size = (480,360), xlim = (0.0,1.3), ylim = (0.0,0.47))
-savefig("figures/cumincidence.svg")
+savefig("figures/cumincidence.pdf")
 
 ##########
 # Posterior estimates: prediction curves
@@ -162,7 +162,7 @@ savefig("figures/cumincidence.svg")
 plot_proportions(times, proportions_post, proportions_true = proportions_true, lower = proportions_lower, upper = proportions_upper)
 plot!(size = (480,360), xlim = (0.0,1.3), ylim = (0.0,1.0))
 vline!([quantile(data.T, 0.95)], linestyle = :dashdot, linecolor = :black, linealpha = 0.5, label = false)
-savefig("figures/prediction.svg")
+savefig("figures/prediction.pdf")
 
 ##########
 # Diagnostics
@@ -173,23 +173,23 @@ println("# Model hyperparameters")
 # number of dishes
 (pltrace, plhist) = summary_dishes(params, burn_in = 5000)
 plot(pltrace, size = (480,360), xlim = (0,2500), ylim = (0.0, 50.0))
-savefig("figures_supp/illustration_dishes_t.svg")
+savefig("figures_supp/illustration_dishes_t.pdf")
 plot(plhist, size = (480,360), xlim = (0.0, 50.0))
-savefig("figures_supp/illustration_dishes_p.svg")
+savefig("figures_supp/illustration_dishes_p.pdf")
 
 # base measure mass
 (pltrace, plhist) = summary_theta(params, burn_in = 5000)
 plot(pltrace, size = (480,360), xlim = (0,2500), ylim = (0.0, 24.0))
-savefig("figures_supp/illustration_theta_t.svg")
+savefig("figures_supp/illustration_theta_t.pdf")
 plot(plhist, size = (480,360), xlim = (0.0, 24.0))
-savefig("figures_supp/illustration_theta_p.svg")
+savefig("figures_supp/illustration_theta_p.pdf")
 
 # kernel parameter
 (pltrace, plhist) = summary_kernelpars(params, :γ, burn_in = 5000)
 plot(pltrace, size = (480,360), xlim = (0,2500), ylim = (-3.0, 4.0))
-savefig("figures_supp/illustration_gamma_t.svg")
+savefig("figures_supp/illustration_gamma_t.pdf")
 plot(plhist, size = (480,360), xlim = (-3.0, 4.0))
-savefig("figures_supp/illustration_gamma_p.svg")
+savefig("figures_supp/illustration_gamma_p.pdf")
 
 println("# Functionals")
 
@@ -197,17 +197,17 @@ println("# Functionals")
 (pltrace, plcor) = traceplot_survival(marginal_estimator, 0.4)
 # (pltrace, plcor) = traceplot_survival(posterior_estimator, 0.4)
 plot(pltrace, size = (480,360), xlim = (0,2000), ylim = (0.47, 0.57))
-savefig("figures_supp/illustration_survival_t.svg")
+savefig("figures_supp/illustration_survival_t.pdf")
 plot(plcor, size = (480,360), xlim = (0.0,33.0))
-savefig("figures_supp/illustration_survival_ac.svg")
+savefig("figures_supp/illustration_survival_ac.pdf")
 
 # traceplots for incidence functions
 (pltrace, plcor) = traceplot_incidence(marginal_estimator, 0.4)
 # (pltrace, plcor) = traceplot_incidence(posterior_estimator, 0.4)
 plot(pltrace, size = (480,360), xlim = (0,2000), ylim = (0.0, 0.66))
-savefig("figures_supp/illustration_incidence_t.svg")
+savefig("figures_supp/illustration_incidence_t.pdf")
 plot(plcor, size = (480,360), xlim = (0.0,33.0))
-savefig("figures_supp/illustration_incidence_ac.svg")
+savefig("figures_supp/illustration_incidence_ac.pdf")
 
 # traceplots for prediction curves
 # (pltrace, plcor) = traceplot_proportions(marginal_estimator, 0.4)

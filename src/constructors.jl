@@ -3,7 +3,7 @@
 
 Kernel specification, random measures parameters, hierachical or independent model, regression or exchangeable data.
 
-The `KernelType` is a subtype of `AbstractKernel`, to choose among `DykstraLaudKernel`, `OrnsteinUhlenbeckKernel` and `RectKernel`.
+The `KernelType` is a subtype of `AbstractKernel`, to choose among `DykstraLaudKernel`, `OrnsteinUhlenbeckKernel` and `RectangularKernel`.
 Parameters `beta` and `beta0` are rate parameters, `sigma` and `sigma0` are discount paramters. Base measure parameters `beta0` and `sigma0` are used only if `hierarchical = true`.
 The currently available Cox regression model involves categorical predictors.
 """
