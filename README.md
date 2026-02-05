@@ -1,6 +1,6 @@
 # Bayesian Nonparametric Competing Risks
 
-This repository contains the source code and scripts to replicate results in the paper *Principled Estimation and Prediction with Competing Risks: A Bayesian Nonparametric Approach* by Claudio Del Sole, Antonio Lijoi and Igor Pr\"unster. 
+This repository contains the source code and scripts to replicate results in the paper *Principled Estimation and Prediction with Competing Risks: A Bayesian Nonparametric Approach* by Claudio Del Sole, Antonio Lijoi and Igor Pr&uuml;nster. 
 The paper introduces a dependent nonparametric prior on the transition probabilities of a multi-state model for competing risks; transition rates are specified as kernel mixtures with respect to hierarchical completely random measures.
 
 The core source code is organized in the form of [Julia](https://julialang.org/) package, and is available in the `/src` folder. The code implements the posterior sampling algorithms for mixture hazard models with hierarchical generalized gamma completely random measures, as detailed in Section S3 (Supplementary Material). An implementation of similar algorithms for mixture hazard models with independent generalized gamma completely random measures is also available.
