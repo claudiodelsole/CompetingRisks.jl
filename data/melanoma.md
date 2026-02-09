@@ -8,12 +8,12 @@ Available as part of the R package [`timereg`](https://cran.r-project.org/packag
 
 - *no*: patient code.
 
-- *status*: survival status. 
+- *status*: survival status; 
 1 = death from melanoma, 2 = alive (censored), 3 = death from other cause.
 
 - *days*: survival time.
 
-- *ulc*: ulceration indicator. 
+- *ulc*: ulceration indicator; 
 0 = absent, 1 = present.
 
 - *thick*: tumour thickness (1/100 mm).
