@@ -11,7 +11,7 @@ Available as part of the R package [`crrSC`](https://cran.r-project.org/package=
 - *ftime*: event time.
 
 - *fstatus*: event type;
-0 = censored, 1 = acute or chronic GvHD , 2 = death free of GvHD.
+0 = censored, 1 = acute or chronic GvHD, 2 = death free of GvHD.
 
 - *cells*: source of stem cells;
 0 = peripheral blood, 1 = bone marrow.
